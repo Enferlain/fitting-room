@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "fitting_room",
+  "project_id": "a57e30e4-d524-4e4c-a236-0048b5fb54c6"
+}
