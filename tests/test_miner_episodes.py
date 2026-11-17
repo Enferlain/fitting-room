@@ -292,3 +292,22 @@ def test_classify_stops_after_consecutive_failures(tmp_path, monkeypatch):
     )
     assert stats["stopped_early"] and stats["failed_batches"] == 2
     assert len(calls) == 2 * (cl.RETRIES + 1)  # not all 5 batches
+
+
+def test_classify_parallel_labels_everything_once(tmp_path):
+    from fitting_room.miner import classify as cl
+
+    candidates = tmp_path / "c.jsonl"
+    fus = [{"ref": f"L{i}", "text": f"why is module {i} structured like this?"} for i in range(30)]
+    candidates.write_text(json.dumps({"episode_id": "e", "follow_ups": fus}) + "\n")
+
+    def answer(prompt):
+        ids = [line.split("id: ")[1] for line in prompt.splitlines() if line.startswith("### id: ")]
+        return json.dumps([{"id": i, "label": "question", "reason": "r"} for i in ids])
+
+    stats = cl.classify(
+        candidates, tmp_path / "l.jsonl", caller=answer, log=lambda _: None, parallel=4
+    )
+    assert stats["labelled_by_model"] == 30 and stats["model_calls"] == 4
+    keys = [json.loads(x)["key"] for x in (tmp_path / "l.jsonl").read_text().splitlines()]
+    assert len(keys) == len(set(keys)) == 30

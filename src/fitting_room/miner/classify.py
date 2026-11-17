@@ -23,6 +23,7 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -153,6 +154,7 @@ def classify(
     caller: Callable[[str], str] = call_glm,
     log: Callable[[str], None] = print,
     backoff: float = 10.0,
+    parallel: int = 1,
 ) -> dict:
     """Label follow-ups not yet in the cache. Returns counts."""
     cache = load_cache(cache_path)
@@ -173,47 +175,54 @@ def classify(
                 break
         calls = failures = added_model = consecutive = 0
         stopped = False
-        for i in range(0, len(todo), BATCH):
-            batch = todo[i : i + BATCH]
-            labels = None
+        n_batches = (len(todo) + BATCH - 1) // BATCH
+        batches = [todo[i : i + BATCH] for i in range(0, len(todo), BATCH)]
+
+        def fetch(index: int) -> list[dict] | None:
             for attempt in range(RETRIES + 1):
                 try:
-                    labels = parse_labels(caller(_render(batch)))
-                    break
+                    return parse_labels(caller(_render(batches[index])))
                 except (urllib.error.URLError, ValueError, TimeoutError, OSError) as err:
-                    log(f"batch {i // BATCH + 1} attempt {attempt + 1} failed: {err}")
+                    log(f"batch {index + 1} attempt {attempt + 1} failed: {err}")
                     time.sleep(backoff * (2**attempt))
-            if labels is None:
-                failures += 1
-                consecutive += 1
+            return None
+
+        # Waves of `parallel` concurrent calls; results are written from this thread only.
+        with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
+            for wave_start in range(0, n_batches, max(1, parallel)):
+                wave = range(wave_start, min(n_batches, wave_start + max(1, parallel)))
+                for index, labels in zip(wave, pool.map(fetch, wave), strict=True):
+                    if labels is None:
+                        failures += 1
+                        consecutive += 1
+                        continue
+                    consecutive = 0
+                    calls += 1
+                    by_id = {str(x.get("id")): x for x in labels if isinstance(x, dict)}
+                    for it in batches[index]:
+                        got = by_id.get(it.key)
+                        if not got or got.get("label") not in LABELS:
+                            continue
+                        rec = {
+                            "key": it.key,
+                            "episode_id": it.episode_id,
+                            "ref": it.ref,
+                            "label": got["label"],
+                            "reason": str(got.get("reason", ""))[:300],
+                            "by": f"{MODEL}/{PROMPT_VERSION}",
+                        }
+                        out.write(json.dumps(rec) + "\n")
+                        cache[it.key] = rec
+                        added_model += 1
+                    out.flush()
+                    log(
+                        f"{time.strftime('%H:%M:%S')} batch {index + 1}/{n_batches}: "
+                        f"{len(by_id)} labels"
+                    )
                 if consecutive >= MAX_CONSECUTIVE_FAILURES:
                     log(f"stopping: {consecutive} consecutive failed batches")
                     stopped = True
                     break
-                continue
-            consecutive = 0
-            calls += 1
-            by_id = {str(x.get("id")): x for x in labels if isinstance(x, dict)}
-            for it in batch:
-                got = by_id.get(it.key)
-                if not got or got.get("label") not in LABELS:
-                    continue
-                rec = {
-                    "key": it.key,
-                    "episode_id": it.episode_id,
-                    "ref": it.ref,
-                    "label": got["label"],
-                    "reason": str(got.get("reason", ""))[:300],
-                    "by": f"{MODEL}/{PROMPT_VERSION}",
-                }
-                out.write(json.dumps(rec) + "\n")
-                out.flush()
-                cache[it.key] = rec
-                added_model += 1
-            log(
-                f"{time.strftime('%H:%M:%S')} batch {i // BATCH + 1}/"
-                f"{(len(todo) + BATCH - 1) // BATCH}: {len(by_id)} labels"
-            )
     return {
         "labelled_by_rule": added_local,
         "labelled_by_model": added_model,

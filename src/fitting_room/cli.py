@@ -71,6 +71,7 @@ def mine(
 def classify(
     limit: int = typer.Option(None, help="Label at most this many follow-ups (pilot runs)"),
     out: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+    parallel: int = typer.Option(1, help="Concurrent GLM calls (mind the plan's rate limits)"),
 ) -> None:
     """Label mined follow-ups with GLM (model_error, misunderstanding, ...); cached.
 
@@ -79,7 +80,9 @@ def classify(
     """
     from fitting_room.miner.classify import classify as run_classify
 
-    stats = run_classify(out / "candidates.jsonl", out / "followup-labels.jsonl", limit=limit)
+    stats = run_classify(
+        out / "candidates.jsonl", out / "followup-labels.jsonl", limit=limit, parallel=parallel
+    )
     typer.echo(stats)
 
 
