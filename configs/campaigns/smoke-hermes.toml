@@ -1,0 +1,6 @@
+# Single-pair checks for Hermes on the hello spike.
+runs = ["hermes-qwen35-9b"]
+repeats = 1
+
+[tasks]
+include = ["spikes/hello"]

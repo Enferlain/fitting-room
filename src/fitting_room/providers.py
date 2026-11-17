@@ -36,6 +36,8 @@ PROVIDERS: dict[str, Provider] = {
     "zai": Provider(
         name="zai",
         anthropic_base_url="https://api.z.ai/api/anthropic",
+        # Coding-plan OpenAI-compatible endpoint (the general /api/paas/v4 rejects the key).
+        openai_base_url="https://api.z.ai/api/coding/paas/v4",
         placeholder_key="av-managed-key",
         needs_agent_vault_ca=True,
         allowed_hosts=("api.z.ai",),
@@ -43,7 +45,8 @@ PROVIDERS: dict[str, Provider] = {
     "local": Provider(
         name="local",
         openai_base_url="http://host.docker.internal:18080/v1",
-        placeholder_key="placeholder",
+        # llama.cpp ignores the key; Hermes rejects "placeholder" but documents this one.
+        placeholder_key="no-key-required",
         allowed_hosts=("host.docker.internal",),
     ),
 }

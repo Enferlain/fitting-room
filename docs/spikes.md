@@ -63,18 +63,28 @@ The oracle's `solve.sh` (which runs in the agent phase) probes both hosts. Resul
 
 **Decision:** benchmark llama-server binds to `127.0.0.1:18080` (not exposed to the LAN). Tasks with a public upstream use `[agent] network_mode = "allowlist"` with `host.docker.internal` plus any hosted-model API hosts the run needs, which `fr run` adds per configuration.
 
-## 4.1 Hermes headless (partial: no model call made yet)
+## 4.1 Hermes headless
 
-Findings from `hermes --help` (host build `Hermes Agent v0.0.0 (2026.9.24) · upstream 951ec092`, Nix):
+Host build: `Hermes Agent v0.0.0 (2026.9.24) · upstream 27e38935` (Nix). Upstream's newest release tag `v2026.9.24` is commit `f97608f178d1ffeca59860195ab7da295f7c8e5f`.
 
-- **One-shot:** `hermes -z "<prompt>"` prints only the final response; tools, memory, rules and AGENTS.md in the working directory load as normal.
-- **Usage:** `--usage-file PATH` (one-shot only) writes JSON with estimated cost, token counts, model and API calls, even when the run fails.
-- **No prompts:** `--yolo` bypasses dangerous-command approvals; `--accept-hooks` auto-approves hooks.
-- **Clean config:** `--ignore-user-config` (credentials in `.env` still load), `--ignore-rules` (skips AGENTS.md, SOUL.md, memory, preloaded skills), `--safe-mode` (also disables plugins and MCP servers).
-- **Model selection:** `-m MODEL`, `--provider PROVIDER`, `--reasoning LEVEL`; toolsets via `-t`; skills via `--skills`.
+CLI (`hermes chat --help`): one-shot `-q` / `-z`, `--yolo` (no approvals), `--reasoning LEVEL`, `--provider`, `--ignore-user-config`, `--ignore-rules`, `--safe-mode`, `--usage-file`.
 
-**Harbor 0.26 already ships a `hermes` agent** (`harbor agent schema hermes`: `version`, `base_url`, `config`, `toolsets`, `max_turns`), and a `pi` agent usable as the base for Oh My Pi. So design D5's "new adapter" for Hermes and omp becomes "thin subclass of the built-in".
+**Harbor 0.26's built-in `hermes` agent does most of the work:** one-shot `hermes --yolo chat -q`, a fresh `HERMES_HOME=/tmp/hermes` (no host config, memory and user profile off, checkpoints off), `hermes sessions export` to ATIF, MCP servers and skills through Hermes's own config. GLM goes through Hermes's native `zai` provider (`GLM_API_KEY`); local models through its `openai-api` provider (`OPENAI_BASE_URL`).
 
-**Still to do (needs a model call, so needs the user's go-ahead):** check that Harbor's `hermes` agent installs a Hermes matching the host build (upstream `951ec092`) or needs a pinned source, and run one non-interactive prompt in a container.
+Gaps fixed in `fitting_room.adapters.hermes:FrHermes` (verified 2026-11-17, Hermes + local Qwen3.5-9B on `spikes/hello`: reward 1, ATIF written, 10,644 in / 10,513 cached / 68 out tokens):
 
-**Credentials (blocker for all of group 4):** Harbor's built-in agents take API keys from the host environment (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, ...). On this machine only a GLM key exists; Codex and Claude use subscription logins. Decision pending with the user.
+| Gap | Fix |
+|---|---|
+| Harbor pins with `--branch`; the installer needs `--commit` for a SHA | install with `--commit <sha>` |
+| The installer on `main` expects main's repo layout (`pm/`), so pinned installs fail | fetch `install.sh` from the pinned commit |
+| Install took 14 min in a plain container and hit Harbor's 20 min setup timeout in a trial; Playwright, Chromium and fonts were most of it | `--skip-browser --skip-computer-use`: ~6 min. Browser tools can't reach anything on the allowlisted network anyway. |
+| `hermes version` doesn't exist in this release | version check uses `hermes --version` |
+| No reasoning level is ever set | `reasoning_effort` option (no `none`) into `agent.reasoning_effort` and `--reasoning` |
+| Hermes rejects keys that look like placeholders (`placeholder`, `dummy`, `sk-…`) | local provider key is `no-key-required` (Hermes's documented no-auth value) |
+| Token counts are summed from per-message usage, empty for llama.cpp | fall back to the session export's totals |
+
+Notes:
+- Six minutes of install per trial is still slow. If campaigns get long, bake Hermes into a cached image layer.
+- Hermes detects WSL from the kernel and tells the model the Windows drives are under `/mnt/c`. They aren't mounted in the sandbox; the model may waste a call looking. Same kernel string for every harness, so not a fairness issue, but it is noise.
+- The bundled skill list (58 skills) is in Hermes's system prompt by default. That is stock Hermes; toolkits (task 4.6) decide what else is added.
+- GLM through Hermes is not smoke-tested yet (z.ai 5-hour window was full).

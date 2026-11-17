@@ -108,12 +108,44 @@ def _omp_zai(run: RunConfig) -> AgentSpec:
     )
 
 
+def _hermes(run: RunConfig) -> AgentSpec:
+    # Hermes's native zai provider reads GLM_API_KEY; GLM_BASE_URL pins the coding endpoint.
+    # Local models go through its OpenAI provider, which honours OPENAI_BASE_URL.
+    p = PROVIDERS[run.provider or ""]
+    common = {
+        "import_path": "fitting_room.adapters.hermes:FrHermes",
+        "kwargs": {"version": run.harness_version, "reasoning_effort": run.effort},
+        "extra_allowed_hosts": p.allowed_hosts,
+    }
+    if run.provider == "zai":
+        key = {"GLM_API_KEY": p.placeholder_key}
+        return AgentSpec(
+            model_name=f"zai/{_model_id(run)}",
+            api_key_name="GLM_API_KEY",
+            env={**key, "GLM_BASE_URL": p.openai_base_url or ""},
+            host_env=key,
+            needs_agent_vault_ca=True,
+            **common,
+        )
+    key = {"OPENAI_API_KEY": p.placeholder_key}
+    return AgentSpec(
+        model_name=f"openai/{_model_id(run)}",
+        base_url=p.openai_base_url,
+        api_key_name="OPENAI_API_KEY",
+        env=key,
+        host_env=key,
+        **common,
+    )
+
+
 #: Harness x provider pairs that have passed a smoke run (docs/harnesses.md).
 #: Anything else is refused rather than scored.
 SUPPORTED: dict[tuple[str, str], Callable[[RunConfig], AgentSpec]] = {
     ("claude-code", "zai"): _claude_code_zai,
     ("opencode", "local"): _opencode_local,
     ("omp", "zai"): _omp_zai,
+    ("hermes", "zai"): _hermes,
+    ("hermes", "local"): _hermes,
 }
 
 

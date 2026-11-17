@@ -7,9 +7,9 @@ Per-harness notes (task 4.7 will complete this). Harbor 0.26.0 ships built-in ag
 | Harness | Host version | Notes |
 |---|---|---|
 | OpenCode | 2.2.6 (nix profile) | npm's `opencode-ai` stable is 1.19.5; the 2.x line is what's installed. Use Harbor's `opencode-v2` agent. |
-| Codex | `~/.local/bin/codex` | Requires the Responses API; whether z.ai offers one is unverified, so Codex may be local-model only. |
+| Codex | `~/.local/bin/codex` | Local models only (user decision 2026-11-17: no GLM pairing for Codex). |
 | Claude Code | 2.1.263 | GLM through `https://api.z.ai/api/anthropic` with a placeholder token (Agent Vault substitutes the real key). |
-| Hermes | v0.0.0 (2026.9.24), upstream `951ec092` (nix) | One-shot `-z`, `--usage-file`, `--yolo`, `--ignore-user-config`; see docs/spikes.md 4.1. |
+| Hermes | v0.0.0 (2026.9.24), upstream `27e38935` (nix); benchmark pin `f97608f1` (`v2026.9.24`) | Adapter `fitting_room.adapters.hermes:FrHermes`, a thin subclass of Harbor's `hermes` agent; see docs/spikes.md 4.1 for what it changes. |
 | Oh My Pi | 18.12.6 (nix profile; npm `@oh-my-pi/pi-coding-agent`) | Adapter `fitting_room.adapters.omp:OhMyPi`, a thin subclass of Harbor's `pi` agent: installs Bun 1.3.14 + the npm package, runs `omp -p --mode json --approval-mode yolo`. Harbor's Pi trajectory/usage parsing works unchanged. Built-in `zai` provider reads `ZAI_API_KEY`. Day-to-day default `zai/glm-5.3:max`. |
 
 ## Local model smoke results
@@ -19,8 +19,9 @@ Serving profile `qwen35-9b-3080` (`uv run fr serve up qwen35-9b-3080`), task `sp
 | Harness | Command | Protocol | Result |
 |---|---|---|---|
 | OpenCode 2.2.6 | `harbor run -p spikes/hello -a opencode-v2 -m openai/qwen3.5-9b --ak version=2.2.6 --ak base_url=http://host.docker.internal:18080/v1 --ae OPENAI_API_KEY=placeholder` | OpenAI-compatible via llama-server | reward 1, no exception, usage recorded (12,042 in / 6,030 cached / 65 out), ATIF `agent/trajectory.json` written (2026-11-17) |
+| Hermes 2026.9.24 (`f97608f1`) | `fr run smoke-hermes` (`hermes-qwen35-9b`) | OpenAI-compatible via llama-server | reward 1, ATIF written, usage from the session export (10,644 in / 10,513 cached / 68 out) (2026-11-17) |
 
-llama.cpp ignores the API key, so a placeholder value works for local runs.
+llama.cpp ignores the API key; the local placeholder is `no-key-required` because Hermes rejects obvious placeholders.
 
 ## GLM smoke results (via Agent Vault)
 

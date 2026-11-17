@@ -209,3 +209,33 @@ def test_omp_glm_mapping(tmp_path, monkeypatch):
     assert agent["env"] == {"ZAI_API_KEY": "av-managed-key"}
     assert agent["kwargs"] == {"version": "18.12.6", "reasoning_effort": "max"}
     assert spec.needs_agent_vault_ca
+
+
+def test_hermes_mappings():
+    from fitting_room.runner import agent_spec_for
+
+    sha = "f97608f178d1ffeca59860195ab7da295f7c8e5f"
+    glm = agent_spec_for(
+        RunConfig(name="h", harness="hermes", harness_version=sha,
+                  model="zai/glm-5.3-flash", effort="medium")
+    )  # fmt: skip
+    assert glm.model_name == "zai/glm-5.3-flash"
+    assert glm.env["GLM_API_KEY"] == "av-managed-key"
+    assert glm.env["GLM_BASE_URL"].endswith("/api/coding/paas/v4")
+    assert glm.needs_agent_vault_ca and glm.kwargs["reasoning_effort"] == "medium"
+    local = agent_spec_for(
+        RunConfig(name="h", harness="hermes", harness_version=sha, model="local/qwen3.5-9b",
+                  effort="low", serving_profile="qwen35-9b-3080")
+    )  # fmt: skip
+    # Hermes rejects keys that look like placeholders ("placeholder", "dummy", "sk-...").
+    assert local.env["OPENAI_API_KEY"] == "no-key-required"
+    assert local.base_url.startswith("http://host.docker.internal")
+
+
+def test_hermes_refuses_thinking_off():
+    from fitting_room.adapters.hermes import FrHermesOptions
+
+    with pytest.raises(ValueError):
+        FrHermesOptions(reasoning_effort="none")
+    with pytest.raises(ValueError):
+        FrHermesOptions()

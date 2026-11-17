@@ -5,6 +5,7 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 ## 2026-11-17
 
 ### Added
+- Hermes adapter (`fitting_room.adapters.hermes:FrHermes`): thin subclass of Harbor's `hermes` agent pinned by commit (`v2026.9.24`), installer from the pinned commit without browser extras (~6 min instead of 14+), required reasoning level (never off), and token counts from the session export. Pairs `hermes` × `zai` and `hermes` × `local` enabled; local placeholder key is now `no-key-required`.
 - `uv` project with Harbor 0.26.0 pinned, `fr` CLI, pytest and ruff.
 - Run configurations and campaigns (`configs/runs/`, `configs/campaigns/`) with up-front validation; `fr run <campaign>` runs one Harbor job per configuration, writes a provenance sidecar (`fitting_room.json`) into every trial, and reports pass / fail / infrastructure errors (infrastructure errors excluded from pass rate). See `docs/running.md`.
 - Providers `zai` (GLM through Agent Vault, placeholder key, CA overlay generated per job) and `local` (serving profile, endpoint checked before running); harness × provider pairs are allowed only after a passing smoke run.
@@ -18,6 +19,8 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 - Spike tasks in `spikes/` and findings in `docs/spikes.md`; harness notes in `docs/harnesses.md`.
 
 ### Verified
+- Hermes 2026.9.24 + local Qwen3.5-9B passed the hello task through `fr run smoke-hermes` with ATIF and token usage. Hermes + GLM not run yet.
+- Follow-up labeller calibration (50 items, 27 with yes/no answers after re-checking 3 against full sessions): prompt v3 at max thinking 89% agreement, κ 0.77; v1 81%, κ 0.64. v3 adopted; relabelling all follow-ups with it.
 - z.ai throttles concurrent requests on the GLM Coding Lite plan: 4+3 concurrent calls returned persistent 429s at 1% quota; 2 concurrent in total runs clean.
 - Oh My Pi 18.12.6 + GLM 5.3 Flash passed the hello task through `fr run smoke-omp`, with an ATIF trajectory including tool calls.
 - `fr run smoke-real`: Claude Code + GLM 5.3 Flash and OpenCode + local Qwen3.5-9B both passed the hello task end to end.
