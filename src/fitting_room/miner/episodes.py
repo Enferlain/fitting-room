@@ -17,7 +17,7 @@ from dataclasses import asdict, dataclass, field
 from functools import cache
 from pathlib import Path
 
-from fitting_room.miner.sessions import HUMAN, TOOL, Message, Session
+from fitting_room.miner.sessions import ASSISTANT, HUMAN, TOOL, Message, Session
 
 SUBSTANTIVE_MIN_CHARS = 60
 
@@ -60,7 +60,11 @@ def is_correction(text: str) -> bool:
 class FollowUp:
     ref: str
     text: str
-    correction: bool
+    correction: bool  # keyword heuristic; superseded by `label` once classified
+    prev_assistant: str = ""  # end of the assistant message before this follow-up
+    next_assistant: str = ""  # start of the assistant reply after it
+    label: str | None = None  # model_error | misunderstanding | scope_change | question | ...
+    label_reason: str | None = None
 
 
 @dataclass
@@ -88,7 +92,13 @@ class Episode:
 
     @property
     def corrections(self) -> list[FollowUp]:
-        return [f for f in self.follow_ups if f.correction]
+        """Follow-ups where the model was wrong: the GLM label when one exists
+        (model_error), otherwise the keyword heuristic."""
+        return [
+            f
+            for f in self.follow_ups
+            if (f.label == "model_error") or (f.label is None and f.correction)
+        ]
 
     @property
     def episode_id(self) -> str:
@@ -157,6 +167,9 @@ def _account_tool(ep: Episode, msg: Message) -> None:
         ep.git_commits += 1
 
 
+CONTEXT_CHARS = 1200
+
+
 def split_episodes(session: Session) -> list[Episode]:
     """Split one session into episodes. Messages before the first substantive request
     (e.g. a bare "continue") are attached to the first episode as follow-ups."""
@@ -165,7 +178,14 @@ def split_episodes(session: Session) -> list[Episode]:
     episodes: list[Episode] = []
     pending: list[FollowUp] = []
     current: Episode | None = None
+    last_assistant = ""
+    awaiting_reply: list[FollowUp] = []
     for msg in session.messages:
+        if msg.role == ASSISTANT:
+            last_assistant = msg.text
+            for fu in awaiting_reply:
+                fu.next_assistant = msg.text[:CONTEXT_CHARS]
+            awaiting_reply = []
         if msg.role == HUMAN:
             if is_substantive(msg.text) and not (current and is_correction(msg.text)):
                 current = Episode(
@@ -186,7 +206,13 @@ def split_episodes(session: Session) -> list[Episode]:
                 pending = []
                 episodes.append(current)
             else:
-                fu = FollowUp(msg.ref, msg.text.strip(), is_correction(msg.text))
+                fu = FollowUp(
+                    msg.ref,
+                    msg.text.strip(),
+                    is_correction(msg.text),
+                    prev_assistant=last_assistant[-CONTEXT_CHARS:],
+                )
+                awaiting_reply.append(fu)
                 (current.follow_ups if current else pending).append(fu)
         elif msg.role == TOOL and current:
             _account_tool(current, msg)

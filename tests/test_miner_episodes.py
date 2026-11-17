@@ -219,3 +219,56 @@ def test_codex_exec_escaped_patch_and_relative_paths(repo):
     ]
     (ep,) = split_episodes(session(repo, msgs))
     assert ep.files_edited == ["src/events.rs"]
+
+
+def test_glm_labels_override_keyword_corrections(tmp_path):
+    from fitting_room.miner.classify import classify, iter_items
+
+    candidates = tmp_path / "candidates.jsonl"
+    ep = {
+        "episode_id": "codex:s#0",
+        "follow_ups": [
+            {
+                "ref": "L2",
+                "text": "no, that's wrong, revert it",
+                "prev_assistant": "a",
+                "next_assistant": "b",
+            },
+            {
+                "ref": "L3",
+                "text": "what about lines 10-20?",
+                "prev_assistant": "a",
+                "next_assistant": "Good catch",
+            },
+            {"ref": "L4", "text": "continue please"},
+        ],
+    }
+    candidates.write_text(json.dumps(ep) + "\n")
+    items = {i.ref: i.key for i in iter_items(candidates)}
+    reply = json.dumps(
+        [
+            {"id": items["L2"], "label": "misunderstanding", "reason": "user confused"},
+            {"id": items["L3"], "label": "model_error", "reason": "agent conceded"},
+        ]
+    )
+    cache = tmp_path / "labels.jsonl"
+    stats = classify(candidates, cache, caller=lambda _: reply, log=lambda _: None)
+    assert stats == {
+        "labelled_by_rule": 1, "labelled_by_model": 2, "model_calls": 1,
+        "failed_batches": 0, "cached_total": 3,
+    }  # fmt: skip
+    # Second run: everything cached, no calls.
+    again = classify(candidates, cache, caller=lambda _: 1 / 0, log=lambda _: None)
+    assert again["model_calls"] == 0 and again["cached_total"] == 3
+
+    from fitting_room.miner.episodes import Episode, FollowUp
+    from fitting_room.miner.pipeline import apply_labels
+
+    e = Episode(
+        source="codex", session_id="s", session_path="", index=0, repo="r", repo_root=None,
+        cwd=None, branch=None, start=None, request="x", request_ref="L1",
+        follow_ups=[FollowUp(f["ref"], f["text"], ref == "L2") for ref, f in
+                    zip(("L2", "L3", "L4"), ep["follow_ups"], strict=True)],
+    )  # fmt: skip
+    assert apply_labels([e], cache) == 3
+    assert [f.ref for f in e.corrections] == ["L3"]  # keyword hit L2 overridden by label

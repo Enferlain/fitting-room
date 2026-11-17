@@ -67,6 +67,22 @@ def mine(
     typer.echo(f"wrote {out / 'candidates.md'} and {out / 'candidates.jsonl'}")
 
 
+@app.command()
+def classify(
+    limit: int = typer.Option(None, help="Label at most this many follow-ups (pilot runs)"),
+    out: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+) -> None:
+    """Label mined follow-ups with GLM (model_error, misunderstanding, ...); cached.
+
+    Uses GLM 5.3 Flash with thinking on, through Agent Vault (placeholder key).
+    Re-run `fr mine` afterwards to rank candidates by model errors.
+    """
+    from fitting_room.miner.classify import classify as run_classify
+
+    stats = run_classify(out / "candidates.jsonl", out / "followup-labels.jsonl", limit=limit)
+    typer.echo(stats)
+
+
 serve_app = typer.Typer(help="Start/stop benchmark serving profiles (local models).")
 app.add_typer(serve_app, name="serve")
 
