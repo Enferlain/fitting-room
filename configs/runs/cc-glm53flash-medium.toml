@@ -1,0 +1,5 @@
+# Claude Code driven by GLM 5.3 Flash through z.ai (placeholder key; Agent Vault injects).
+harness = "claude-code"
+harness_version = "2.1.263"
+model = "zai/glm-5.3-flash"
+effort = "medium"

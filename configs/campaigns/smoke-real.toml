@@ -1,0 +1,6 @@
+# One trial per real harness/provider pair on the hello spike (cheap end-to-end check).
+runs = ["cc-glm53flash-medium", "oc-qwen35-9b"]
+repeats = 1
+
+[tasks]
+include = ["spikes/hello"]

@@ -30,7 +30,7 @@ One harness × model × arm × toolkit (× serving profile) combination. The fil
 ```toml
 harness = "codex"              # codex | claude-code | opencode | hermes | omp
 harness_version = "0.162.0"    # required: the exact version installed in the sandbox
-model = "openai/<model id>"    # required: '<provider>/<model id>'; 'local/<name>' = local model
+model = "zai/glm-5.3"          # required: '<provider>/<model id>' (zai or local)
 effort = "medium"              # required: reasoning effort, passed explicitly
 arm = "stock"                  # optional, default "stock": configs/arms/<arm>/
 toolkit = "none"               # optional, default "none": configs/toolkits/<toolkit>/
@@ -46,6 +46,23 @@ Rejected before any trial starts:
 - a harness whose adapter is not implemented yet.
 
 `harness = "oracle"` and `harness = "nop"` are test-only and need nothing else (see `configs/runs/test-*.toml`).
+
+## Models and providers
+
+The provider is the part of `model` before the slash. Benchmarked models are GLM and local models (GPT and Claude models are not benchmarked).
+
+| Provider | Example `model` | How it connects |
+|---|---|---|
+| `zai` | `zai/glm-5.3`, `zai/glm-5.3-flash` | z.ai's Anthropic-compatible endpoint with the placeholder key `av-managed-key`. The host's Agent Vault substitutes the real key in-flight; `fr run` mounts Agent Vault's public CA into the sandbox through a generated Compose overlay. Agent Vault must be unlocked. |
+| `local` | `local/qwen3.5-9b` | The serving profile's endpoint at `host.docker.internal:18080` with a placeholder key. Start it first with `uv run fr serve up <profile>`; `fr run` refuses local runs when it is down. |
+
+Only harness × provider pairs that have passed a smoke run are accepted (see `docs/harnesses.md`); others are refused before anything starts. Currently: `claude-code` × `zai`, `opencode` × `local`.
+
+```sh
+uv run fr serve up qwen35-9b-3080   # only needed for local models
+uv run fr run smoke-real            # one hello trial per supported pair
+uv run fr serve down qwen35-9b-3080
+```
 
 ## Campaign: `configs/campaigns/<name>.toml`
 

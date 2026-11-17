@@ -31,3 +31,7 @@ Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude m
 | Claude Code 2.1.263 | `ANTHROPIC_AUTH_TOKEN=av-managed-key harbor run -p spikes/hello -a claude-code -m anthropic/glm-5.3-flash --ak version=2.1.263 --ak max_turns=10 --base-url https://api.z.ai/api/anthropic --api-key-name ANTHROPIC_AUTH_TOKEN --extra-docker-compose work/overlays/agent-vault-ca.compose.yaml` | reward 1, no exception (2026-11-17) |
 
 **Cost caveat:** Claude Code reported `cost_usd: 0.171` for this run, which is its estimate at Anthropic prices, not GLM's. Scoring must compute GLM cost from `configs/prices.toml` and ignore harness-reported cost for non-native providers.
+
+## Through `fr run`
+
+`configs/campaigns/smoke-real.toml` (hello task, 1 repeat) passed for both supported pairs on 2026-11-17: `cc-glm53flash-medium` (Claude Code 2.1.263 + GLM 5.3 Flash) and `oc-qwen35-9b` (OpenCode 2.2.6 + local Qwen3.5-9B).
