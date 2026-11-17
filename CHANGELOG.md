@@ -2,6 +2,14 @@
 
 Landed progress, newest first. Planning lives in `openspec/changes/benchmark-foundation/`; task status in its `tasks.md`.
 
+## 2026-11-18
+
+### Added
+- Pair `codex` × `local` using Harbor's built-in Codex agent against llama-server's Responses API. `fr run` never passes the variables that would make Harbor upload the host Codex login.
+
+### Verified
+- Codex 0.163.0 + local Qwen3.5-9B passed the hello task through `fr run smoke-codex`, with ATIF and token usage.
+
 ## 2026-11-17
 
 ### Added

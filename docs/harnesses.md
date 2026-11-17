@@ -7,7 +7,7 @@ Per-harness notes (task 4.7 will complete this). Harbor 0.26.0 ships built-in ag
 | Harness | Host version | Notes |
 |---|---|---|
 | OpenCode | 2.2.6 (nix profile) | npm's `opencode-ai` stable is 1.19.5; the 2.x line is what's installed. Use Harbor's `opencode-v2` agent. |
-| Codex | `~/.local/bin/codex` | Local models only (user decision 2026-11-17: no GLM pairing for Codex). |
+| Codex | 0.163.0 (`~/.local/bin/codex`) | Local models only (user decision 2026-11-17: no GLM pairing for Codex). Responses API only (`wire_api = "chat"` was removed), so a local backend must serve `/v1/responses`; llama.cpp b12236 does, including streamed function calls. Harbor's built-in `codex` agent is used as is. `fr run` strips `CODEX_AUTH_JSON_PATH` / `CODEX_FORCE_AUTH_JSON` so the host ChatGPT login is never uploaded. |
 | Claude Code | 2.1.263 | GLM through `https://api.z.ai/api/anthropic` with a placeholder token (Agent Vault substitutes the real key). |
 | Hermes | v0.0.0 (2026.9.24), upstream `27e38935` (nix); benchmark pin `f97608f1` (`v2026.9.24`) | Adapter `fitting_room.adapters.hermes:FrHermes`, a thin subclass of Harbor's `hermes` agent; see docs/spikes.md 4.1 for what it changes. |
 | Oh My Pi | 18.12.6 (nix profile; npm `@oh-my-pi/pi-coding-agent`) | Adapter `fitting_room.adapters.omp:OhMyPi`, a thin subclass of Harbor's `pi` agent: installs Bun 1.3.14 + the npm package, runs `omp -p --mode json --approval-mode yolo`. Harbor's Pi trajectory/usage parsing works unchanged. Built-in `zai` provider reads `ZAI_API_KEY`. Day-to-day default `zai/glm-5.3:max`. |
@@ -19,6 +19,7 @@ Serving profile `qwen35-9b-3080` (`uv run fr serve up qwen35-9b-3080`), task `sp
 | Harness | Command | Protocol | Result |
 |---|---|---|---|
 | OpenCode 2.2.6 | `harbor run -p spikes/hello -a opencode-v2 -m openai/qwen3.5-9b --ak version=2.2.6 --ak base_url=http://host.docker.internal:18080/v1 --ae OPENAI_API_KEY=placeholder` | OpenAI-compatible via llama-server | reward 1, no exception, usage recorded (12,042 in / 6,030 cached / 65 out), ATIF `agent/trajectory.json` written (2026-11-17) |
+| Codex 0.163.0 | `fr run smoke-codex` (`codex-qwen35-9b`) | Responses API via llama-server | reward 1, ATIF with an `exec_command` tool call, usage recorded (12,691 in / 6,336 cached / 63 out), install 2.5 min (2026-11-18) |
 | Hermes 2026.9.24 (`f97608f1`) | `fr run smoke-hermes` (`hermes-qwen35-9b`) | OpenAI-compatible via llama-server | reward 1, ATIF written, usage from the session export (10,644 in / 10,513 cached / 68 out) (2026-11-17) |
 
 llama.cpp ignores the API key; the local placeholder is `no-key-required` because Hermes rejects obvious placeholders.

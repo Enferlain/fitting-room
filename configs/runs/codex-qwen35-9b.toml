@@ -1,0 +1,6 @@
+# Codex driven by local Qwen3.5 9B (llama-swap profile on the 3080; Responses API).
+harness = "codex"
+harness_version = "0.163.0"
+model = "local/qwen3.5-9b"
+effort = "medium"
+serving_profile = "qwen35-9b-3080"

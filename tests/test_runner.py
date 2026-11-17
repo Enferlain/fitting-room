@@ -239,3 +239,20 @@ def test_hermes_refuses_thinking_off():
         FrHermesOptions(reasoning_effort="none")
     with pytest.raises(ValueError):
         FrHermesOptions()
+
+
+def test_codex_local_mapping_and_no_host_login(monkeypatch, tmp_path):
+    from fitting_room import runner
+
+    spec = runner.agent_spec_for(
+        RunConfig(name="c", harness="codex", harness_version="0.163.0", model="local/qwen3.5-9b",
+                  effort="medium", serving_profile="qwen35-9b-3080")
+    )  # fmt: skip
+    assert spec.name == "codex" and spec.base_url.endswith("/v1")
+    assert spec.kwargs["reasoning_effort"] == "medium"
+    # Harbor uploads ~/.codex/auth.json when these are set; fr never passes them on.
+    seen = {}
+    monkeypatch.setenv("CODEX_FORCE_AUTH_JSON", "1")
+    monkeypatch.setattr(runner.subprocess, "call", lambda cmd, env: seen.update(env) or 0)
+    runner.invoke_harbor(tmp_path / "job.json", {"OPENAI_API_KEY": "no-key-required"})
+    assert "CODEX_FORCE_AUTH_JSON" not in seen and seen["OPENAI_API_KEY"] == "no-key-required"

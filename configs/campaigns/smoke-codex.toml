@@ -1,0 +1,6 @@
+# Single-pair check for Codex + a local model on the hello spike.
+runs = ["codex-qwen35-9b"]
+repeats = 1
+
+[tasks]
+include = ["spikes/hello"]

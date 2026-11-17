@@ -21,6 +21,9 @@ from fitting_room.provenance import write_sidecars
 from fitting_room.providers import PROVIDERS, stage_certs, write_ca_overlay
 
 JOB_CONFIG_NAME = "job-config.json"
+# Variables that make Harbor upload a host login (e.g. ~/.codex/auth.json) into the
+# sandbox. Benchmarks never use subscription logins, so they are never passed through.
+HOST_LOGIN_VARS = frozenset({"CODEX_AUTH_JSON_PATH", "CODEX_FORCE_AUTH_JSON"})
 
 
 @dataclass(frozen=True)
@@ -108,6 +111,23 @@ def _omp_zai(run: RunConfig) -> AgentSpec:
     )
 
 
+def _codex_local(run: RunConfig) -> AgentSpec:
+    # Codex only speaks the Responses API; llama-server serves /v1/responses.
+    p = PROVIDERS["local"]
+    return AgentSpec(
+        name="codex",
+        model_name=f"openai/{_model_id(run)}",
+        kwargs={
+            "version": run.harness_version,
+            "reasoning_effort": run.effort,
+            "disable_web_search": True,
+        },
+        base_url=p.openai_base_url,
+        host_env={"OPENAI_API_KEY": p.placeholder_key},
+        extra_allowed_hosts=p.allowed_hosts,
+    )
+
+
 def _hermes(run: RunConfig) -> AgentSpec:
     # Hermes's native zai provider reads GLM_API_KEY; GLM_BASE_URL pins the coding endpoint.
     # Local models go through its OpenAI provider, which honours OPENAI_BASE_URL.
@@ -144,6 +164,7 @@ SUPPORTED: dict[tuple[str, str], Callable[[RunConfig], AgentSpec]] = {
     ("claude-code", "zai"): _claude_code_zai,
     ("opencode", "local"): _opencode_local,
     ("omp", "zai"): _omp_zai,
+    ("codex", "local"): _codex_local,
     ("hermes", "zai"): _hermes,
     ("hermes", "local"): _hermes,
 }
@@ -197,7 +218,8 @@ HarborInvoker = Callable[[Path, dict], int]
 
 def invoke_harbor(job_config_path: Path, host_env: dict) -> int:
     """Run `harbor run -c <file>` with placeholder credentials in its environment."""
-    env = {**os.environ, **host_env}
+    env = {k: v for k, v in os.environ.items() if k not in HOST_LOGIN_VARS}
+    env.update(host_env)
     return subprocess.call(["harbor", "run", "-c", str(job_config_path), "-y", "-q"], env=env)
 
 
