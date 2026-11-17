@@ -2,6 +2,23 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+## Subagents
+
+- Use Sonnet Medium agents for reviewing sections.
+
+## Documentation
+
+- `CHANGELOG.md` should be updated with landed progress whenever it's handed off.
+
+<!-- codebase-memory-mcp:start -->
+## Codebase Memory
+
+This repository uses Codebase Memory for structural code exploration.
+Use the installed `codebase-memory` skill for architecture, symbol discovery,
+call/dependency tracing, impact analysis, and related structural queries.
+Prefer its graph workflow before broad grep/glob/file exploration.
+<!-- codebase-memory-mcp:end -->
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->
 ## Beads Issue Tracker
 
@@ -56,22 +73,3 @@ This protocol applies when ending a Beads implementation workflow. It is subordi
 - Do not commit or push without clear authority from the active profile or the current user request.
 - If a required sync or push is blocked, stop and report the exact command and error.
 <!-- END BEADS INTEGRATION -->
-
-
-## Build & Test
-
-_Add your build and test commands here_
-
-```bash
-# Example:
-# npm install
-# npm test
-```
-
-## Architecture Overview
-
-_Add a brief overview of your project architecture_
-
-## Conventions & Patterns
-
-_Add your project-specific conventions here_
