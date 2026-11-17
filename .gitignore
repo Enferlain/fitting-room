@@ -228,3 +228,10 @@ __marimo__/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+# fitting-room (local-only data: private code, transcripts, results)
+/work/
+/results/
+/jobs/
+.venv-wsl/
+tasks/**/environment/repo/

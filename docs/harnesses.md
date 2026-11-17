@@ -1,0 +1,33 @@
+# Harnesses
+
+Per-harness notes (task 4.7 will complete this). Harbor 0.26.0 ships built-in agents for all five harnesses in scope: `codex`, `claude-code`, `opencode` / `opencode-v2`, `hermes`, and `pi` (base for Oh My Pi). Check options with `uv run harbor agent schema <name>` and credential handling with `uv run harbor agent auth <name>`.
+
+## Versions on the host
+
+| Harness | Host version | Notes |
+|---|---|---|
+| OpenCode | 2.2.6 (nix profile) | npm's `opencode-ai` stable is 1.19.5; the 2.x line is what's installed. Use Harbor's `opencode-v2` agent. |
+| Codex | `~/.local/bin/codex` | Requires the Responses API; whether z.ai offers one is unverified, so Codex may be local-model only. |
+| Claude Code | 2.1.263 | GLM through `https://api.z.ai/api/anthropic` with a placeholder token (Agent Vault substitutes the real key). |
+| Hermes | v0.0.0 (2026.9.24), upstream `951ec092` (nix) | One-shot `-z`, `--usage-file`, `--yolo`, `--ignore-user-config`; see docs/spikes.md 4.1. |
+| Oh My Pi | nix profile (`omp`), runtime 18.12.6 in sessions | Start from Harbor's `pi` agent. Day-to-day default `zai/glm-5.3:max`; 412 of 413 recorded GLM calls used the Anthropic-messages API on provider `zai`. |
+
+## Local model smoke results
+
+Serving profile `qwen35-9b-3080` (`uv run fr serve up qwen35-9b-3080`), task `spikes/hello`:
+
+| Harness | Command | Protocol | Result |
+|---|---|---|---|
+| OpenCode 2.2.6 | `harbor run -p spikes/hello -a opencode-v2 -m openai/qwen3.5-9b --ak version=2.2.6 --ak base_url=http://host.docker.internal:18080/v1 --ae OPENAI_API_KEY=placeholder` | OpenAI-compatible via llama-server | reward 1, no exception, usage recorded (12,042 in / 6,030 cached / 65 out), ATIF `agent/trajectory.json` written (2026-11-17) |
+
+llama.cpp ignores the API key, so a placeholder value works for local runs.
+
+## GLM smoke results (via Agent Vault)
+
+Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude models). Sandboxes never hold a real key: Agent Vault on the host intercepts `api.z.ai` (containers resolve it to its FakeIP range through Docker Desktop's DNS forwarding) and substitutes the key in-flight. The container only needs Agent Vault's **public** root CA, mounted by a run-level overlay that sets `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`. Without it, TLS verification fails (`verify=20`).
+
+| Harness | Command | Result |
+|---|---|---|
+| Claude Code 2.1.263 | `ANTHROPIC_AUTH_TOKEN=av-managed-key harbor run -p spikes/hello -a claude-code -m anthropic/glm-5.3-flash --ak version=2.1.263 --ak max_turns=10 --base-url https://api.z.ai/api/anthropic --api-key-name ANTHROPIC_AUTH_TOKEN --extra-docker-compose work/overlays/agent-vault-ca.compose.yaml` | reward 1, no exception (2026-11-17) |
+
+**Cost caveat:** Claude Code reported `cost_usd: 0.171` for this run, which is its estimate at Anthropic prices, not GLM's. Scoring must compute GLM cost from `configs/prices.toml` and ignore harness-reported cost for non-native providers.

@@ -1,0 +1,6 @@
+# Free smoke campaign: exercises the runner with Harbor's test agents on the hello spike.
+runs = ["test-oracle", "test-nop"]
+repeats = 3
+
+[tasks]
+include = ["spikes/hello"]

@@ -1,0 +1,44 @@
+# Benchmark serving profile (spec: local-model-serving; design D11).
+# Standalone llama-swap config, launched by `fr serve up qwen35-9b-3080` on 127.0.0.1:18080.
+# Separate from the everyday llama-swap (D:\textgen\2026\llama-swap), which it never modifies.
+# Model and flags copied from the everyday aux config ("qwen3.5-9b-mem-mtp"), pinned to the
+# RTX 3080 by UUID (CUDA order differs between tools, so never pin by index).
+healthCheckTimeout: 300
+logLevel: info
+logToStdout: both
+startPort: 18100   # child llama-server ports; keeps clear of the everyday instance's range
+
+macros:
+  "llama_server": "D:/textgen/2026/llama-b12236-bin-win-cuda-13.5-x64/llama-server.exe"
+
+models:
+  "qwen3.5-9b":
+    env:
+      - "CUDA_VISIBLE_DEVICES=GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"
+    cmd: |
+      ${llama_server}
+      --model D:/textgen/models/Qwen3.5-9B-UD-Q5_K_XL.gguf
+      --spec-type draft-mtp
+      --spec-draft-n-max 6
+      --host 127.0.0.1
+      --port ${PORT}
+      --ctx-size 65536
+      --cache-type-k f16
+      --cache-type-v f16
+      -b 1024
+      -ub 1024
+      --temp 0.1
+      --presence-penalty 0.0
+      --repeat-penalty 1.0
+      --min-p 0.0
+      --top-k 20
+      --top-p 0.95
+      --reasoning off
+      --device CUDA0
+      -ngl 999
+      -fa on
+      --jinja
+      --load-mode none
+      --no-warmup
+      -np 1
+    ttl: -1

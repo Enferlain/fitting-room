@@ -1,0 +1,8 @@
+# Run-level overlay used by `fr run` for GPU tasks.
+# Docker Desktop on WSL2 exposes ALL GPUs regardless of device_ids, so pinning is done
+# with CUDA_VISIBLE_DEVICES by UUID (CUDA's default order differs from nvidia-smi's).
+services:
+  main:
+    environment:
+      CUDA_VISIBLE_DEVICES: "GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"
+      EXPECT_GPU: "3080"
