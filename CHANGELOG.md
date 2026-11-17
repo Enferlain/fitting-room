@@ -10,6 +10,7 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 - Providers `zai` (GLM through Agent Vault, placeholder key, CA overlay generated per job) and `local` (serving profile, endpoint checked before running); harness × provider pairs are allowed only after a passing smoke run.
 - `fr classify`: labels mined follow-ups with GLM 5.3 Flash (thinking on, via Agent Vault) as model_error / misunderstanding / scope_change / question / acknowledgement, using the assistant message before and after as context; labels are cached and `fr mine` ranks candidates by model errors (keyword heuristic as fallback). Pilot: 40 follow-ups, 5 calls.
 - `fr reviews`: extracts review passes with what happened next (agent reply, edits, test runs) into `work/mining/reviews.jsonl`: review-mcp results from Codex (direct calls, code-mode `exec`, and async cells resolved through `wait`) and Claude Code review/audit/verify agents (background hand-backs included). Failed reviews (timeouts, quota errors) are excluded. Priority repos: 619 usable reviews, 412 followed by edits.
+- `fr label-reviews`: GLM labels each extracted review real_bug_fixed / real_bug_unfixed / false_positive / minor_only / no_findings with a one-line bug summary. Result over 618 reviews: 154 real bugs fixed, 106 real bugs unfixed, 34 false positives. `fr mine` attaches confirmed review bugs to the episode they happened in (178 episodes) and ranks them first.
 - `fr calibrate sample|score`: blind yes/no/unclear check of GLM's follow-up labels; first 50-item sample written.
 - Oh My Pi adapter (`fitting_room.adapters.omp:OhMyPi`): thin subclass of Harbor's Pi agent using Bun and the `@oh-my-pi/pi-coding-agent` npm package; pair `omp` × `zai` enabled.
 - Local serving: `fr serve up|down <profile>` launches a standalone llama-swap profile on `127.0.0.1:18080` (Windows binaries via PowerShell, real PID tracked); first profile `qwen35-9b-3080` (Qwen3.5-9B on the RTX 3080).
@@ -17,6 +18,7 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 - Spike tasks in `spikes/` and findings in `docs/spikes.md`; harness notes in `docs/harnesses.md`.
 
 ### Verified
+- z.ai throttles concurrent requests on the GLM Coding Lite plan: 4+3 concurrent calls returned persistent 429s at 1% quota; 2 concurrent in total runs clean.
 - Oh My Pi 18.12.6 + GLM 5.3 Flash passed the hello task through `fr run smoke-omp`, with an ATIF trajectory including tool calls.
 - `fr run smoke-real`: Claude Code + GLM 5.3 Flash and OpenCode + local Qwen3.5-9B both passed the hello task end to end.
 - Mining the five priority repos: 712 sessions read, 3,883 episodes (1,237 coding), 11 secrets redacted, output kept out of git.

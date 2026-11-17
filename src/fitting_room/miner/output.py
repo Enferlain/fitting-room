@@ -92,6 +92,9 @@ def review_score(ep: Episode) -> float:
     Corrections reveal failure modes; edits plus tests suggest a checkable coding task;
     many tool calls without edits suggest a real exploration task."""
     score = 3.0 * min(len(ep.corrections), 3)
+    # A review that found a real bug is the strongest evidence of a model error.
+    score += 4.0 * min(sum(b["label"] == "real_bug_fixed" for b in ep.review_bugs), 2)
+    score += 2.0 * min(sum(b["label"] == "real_bug_unfixed" for b in ep.review_bugs), 2)
     score += 2.0 if ep.files_edited else 0.0
     score += 1.0 if ep.test_runs else 0.0
     score += min(ep.tool_calls, 40) / 20
@@ -103,6 +106,15 @@ def review_score(ep: Episode) -> float:
 def _one_line(text: str, limit: int = 140) -> str:
     t = " ".join(text.split())
     return t if len(t) <= limit else t[: limit - 1] + "…"
+
+
+def _bugs_cell(ep: Episode) -> str:
+    fixed = [b for b in ep.review_bugs if b["label"] == "real_bug_fixed"]
+    unfixed = [b for b in ep.review_bugs if b["label"] == "real_bug_unfixed"]
+    if not fixed and not unfixed:
+        return ""
+    first = (fixed or unfixed)[0].get("bug") or ""
+    return f"{len(fixed)} fixed, {len(unfixed)} unfixed: {_one_line(first, 70)}"
 
 
 def _md_cell(text: str) -> str:
@@ -129,9 +141,10 @@ def render_markdown(episodes: list[Episode], stats: dict, top: int | None = TOP_
     for repo, eps in sorted(by_repo.items()):
         lines += ["", f"## {repo} ({len(eps)})", ""]
         lines.append(
-            "| score | episode | start | commit | track | edits | tests | corrections | request |"
+            "| score | episode | start | commit | track | edits | tests | corrections "
+            "| review bugs | request |"
         )
-        lines.append("|---|---|---|---|---|---|---|---|---|")
+        lines.append("|---|---|---|---|---|---|---|---|---|---|")
         ranked = sorted(eps, key=lambda e: (-review_score(e), e.start or ""))
         for ep in ranked[:top] if top else ranked:
             commit = (ep.commit or "unknown")[:10] + ("*" if ep.commit_inferred else "")
@@ -139,7 +152,8 @@ def render_markdown(episodes: list[Episode], stats: dict, top: int | None = TOP_
                 f"| {review_score(ep)} | `{ep.episode_id}` {ep.request_ref} | "
                 f"{(ep.start or '')[:16]} | {commit} | "
                 f"{ep.suggested_track} | {len(ep.files_edited)} | {ep.test_runs} | "
-                f"{len(ep.corrections)} | {_md_cell(_one_line(ep.request))} |"
+                f"{len(ep.corrections)} | {_md_cell(_bugs_cell(ep))} | "
+                f"{_md_cell(_one_line(ep.request))} |"
             )
     lines += ["", "`*` = commit inferred from the repo's history at the episode's start time.", ""]
     return "\n".join(lines)

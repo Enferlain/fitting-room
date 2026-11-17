@@ -243,3 +243,51 @@ def test_review_labeller_sends_review_prompt(monkeypatch, tmp_path):
     )
     review_labels.label_reviews(src, tmp_path / "l.jsonl", log=lambda _: None)
     assert seen["system"] is review_labels.SYSTEM
+
+
+def test_review_bugs_attach_to_episode_by_time(tmp_path):
+    from fitting_room.miner.episodes import Episode
+    from fitting_room.miner.output import review_score
+    from fitting_room.miner.pipeline import apply_review_bugs
+    from fitting_room.miner.review_labels import review_key
+
+    def ep(i, start):
+        return Episode(source="codex", session_id="s", session_path="", index=i, repo="r",
+                       repo_root=None, cwd=None, branch=None, start=start, request="x",
+                       request_ref="L1", commit="c")  # fmt: skip
+
+    e0, e1 = ep(0, "2026-10-01T10:00"), ep(1, "2026-10-01T12:00")
+    reviews = [
+        {
+            "review_id": "codex:s@L5",
+            "source": "codex",
+            "session_id": "s",
+            "ts": "2026-10-01T11:00",
+            "report": "a",
+        },
+        {
+            "review_id": "codex:s@L9",
+            "source": "codex",
+            "session_id": "s",
+            "ts": "2026-10-01T13:00",
+            "report": "b",
+        },
+        {
+            "review_id": "codex:s@L12",
+            "source": "codex",
+            "session_id": "s",
+            "ts": "2026-10-01T13:30",
+            "report": "c",
+        },
+    ]
+    (tmp_path / "reviews.jsonl").write_text("".join(json.dumps(r) + "\n" for r in reviews))
+    labels = ["real_bug_fixed", "real_bug_unfixed", "minor_only"]
+    (tmp_path / "review-labels.jsonl").write_text("".join(
+        json.dumps({"key": review_key(r), "label": lab, "bug": f"bug {i}"}) + "\n"
+        for i, (r, lab) in enumerate(zip(reviews, labels, strict=True))
+    ))  # fmt: skip
+    before = review_score(e0)
+    assert apply_review_bugs([e0, e1], tmp_path) == 2
+    assert [b["label"] for b in e0.review_bugs] == ["real_bug_fixed"]
+    assert [b["label"] for b in e1.review_bugs] == ["real_bug_unfixed"]
+    assert review_score(e0) == before + 4.0

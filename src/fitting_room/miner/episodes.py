@@ -89,6 +89,8 @@ class Episode:
     test_runs: int = 0
     git_commits: int = 0
     suggested_track: str = "investigative"
+    # Reviews in this episode that found a real defect (GLM-judged): {review_id, label, bug}
+    review_bugs: list[dict] = field(default_factory=list)
 
     @property
     def corrections(self) -> list[FollowUp]:
