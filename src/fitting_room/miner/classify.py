@@ -24,43 +24,70 @@ import urllib.error
 import urllib.request
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from fitting_room.miner.episodes import _CONTINUATION
 
-LABELS = ("model_error", "misunderstanding", "scope_change", "question", "acknowledgement")
+LABELS = ("agent_shortfall", "user_misunderstanding", "neutral", "unclear")
+SHORTFALL_KINDS = (
+    "wrong",  # wrong or broken change, false claim, violated instruction
+    "missed",  # skipped part of the request or something it should have covered
+    "shallow",  # vague or undetailed where depth was needed
+    "no_context_check",  # asked or assumed instead of finding out from available context
+    "sycophantic",  # agreed with / acted on the user's wrong premise or pushback
+    "unwanted_action",  # did something not asked for (e.g. commit, scope creep)
+    "communication",  # unclear explanation that made the user re-ask
+    "other",
+)
+# Labels counted as "the agent fell short" by ranking and calibration (v1 + v2).
+SHORTFALL_LABELS = ("model_error", "agent_shortfall")
 ENDPOINT = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 PLACEHOLDER_KEY = "av-managed-key"  # Agent Vault substitutes the real key in-flight
 CA_BUNDLE = "/etc/ssl/certs/ca-bundle.crt"
 MODEL = "glm-5.3-flash"
 BATCH = 8
-PROMPT_VERSION = "followup-v1"
+PROMPT_VERSION = "followup-v3"
 RETRIES = 2  # extra attempts per batch, with backoff
 MAX_CONSECUTIVE_FAILURES = 5  # e.g. Agent Vault locked: stop instead of burning calls
 
-SYSTEM = """You label a human's follow-up messages to an AI coding agent.
-For each item you get: the end of the agent's previous message (BEFORE), the human's
-follow-up (FOLLOW-UP), and the start of the agent's next reply (AFTER).
+SYSTEM = """You judge one exchange between a human and an AI coding agent: did the AGENT
+fall short anywhere in it? For each item you get: the end of the agent's previous message
+(BEFORE), the human's follow-up (FOLLOW-UP), the start of the agent's reply (AFTER), and
+the agent's next tool calls (AGENT ACTIONS AFTER).
 
-Pick exactly one label:
-- model_error: the follow-up points out a real mistake by the agent: wrong or broken
-  change, ignored or violated an instruction, false claim, unwanted action (e.g. an
-  unrequested commit), or missed something it was asked to do. Use AFTER as evidence:
-  the agent conceding or fixing supports this.
-- misunderstanding: the human pushes back or is confused, but the agent's earlier
-  answer was reasonable; AFTER explains or clarifies rather than fixing. Also use this
-  when the human admits their own mistake.
-- scope_change: a new direction, extra requirement, or change of plan, not a fix.
-- question: asks for explanation, status, or opinion without implying a mistake.
-- acknowledgement: approval, "continue", thanks, or similar.
+Judge on SUBSTANCE, using the context shown. Agents habitually say "you're right"
+whether or not the human is right, so the agent's agreement, apology or concession is
+NOT evidence of anything. Neither is the human's confidence: the human may lack context
+too. Decide who was actually right.
 
-If it is truly ambiguous, choose the most likely label and say why briefly.
-Answer with ONLY a JSON array: [{"id": "<id>", "label": "<label>", "reason": "<= 20 words"}]."""
+Check both sides of the exchange:
+- before: did the follow-up expose a shortfall in the agent's earlier message or work?
+- after: was the agent's reply (and its actions) a shortfall in response to the follow-up?
+
+Labels:
+- agent_shortfall: on either side, the agent was wrong OR fell short of a competent
+  colleague. Kinds: wrong (broken change, false claim, violated instruction), missed
+  (skipped part of the request), shallow (vague or undetailed where depth was needed),
+  no_context_check (asked or assumed instead of first finding out from the available
+  context), sycophantic (agreed with or acted on the human's wrong premise, or changed
+  correct work because the human pushed), unwanted_action (did something not asked for),
+  communication (unclear explanation that made the human ask again), other. An initial
+  error the agent fixes after the follow-up is still a shortfall (side "before").
+- user_misunderstanding: the human was mistaken or confused, the agent's earlier answer
+  was correct and adequate, and its reply handled it well (held position, explained).
+- neutral: a new direction, extra requirement, genuine question, status check, or
+  acknowledgement, and both the earlier message and the reply were adequate.
+- unclear: the context shown is not enough to tell.
+
+For agent_shortfall also give "kind" and "side": before, after, or both.
+Answer with ONLY a JSON array:
+[{"id": "<id>", "label": "<label>", "kind": "<kind or empty>", "side": "<side or empty>",
+  "reason": "<= 25 words"}]."""
 
 
 def cache_key(episode_id: str, ref: str, text: str) -> str:
-    h = hashlib.sha256(f"{PROMPT_VERSION}\0{episode_id}\0{ref}\0{text}".encode()).hexdigest()
+    h = hashlib.sha256(f"{label_version()}\0{episode_id}\0{ref}\0{text}".encode()).hexdigest()
     return h[:24]
 
 
@@ -72,6 +99,7 @@ class Item:
     text: str
     before: str
     after: str
+    after_tools: list[str] = field(default_factory=list)
 
 
 def iter_items(candidates_jsonl: Path) -> Iterator[Item]:
@@ -86,6 +114,7 @@ def iter_items(candidates_jsonl: Path) -> Iterator[Item]:
                     text=fu["text"],
                     before=fu.get("prev_assistant", ""),
                     after=fu.get("next_assistant", ""),
+                    after_tools=fu.get("next_tools", []),
                 )
 
 
@@ -103,8 +132,12 @@ def load_cache(path: Path) -> dict[str, dict]:
 def local_label(item: Item) -> dict | None:
     """Label obvious acknowledgements without a model call."""
     if _CONTINUATION.match(item.text.strip()):
-        return {"label": "acknowledgement", "reason": "continuation phrase", "by": "rule"}
+        return {"label": "neutral", "reason": "continuation phrase", "by": "rule"}
     return None
+
+
+def _actions(tools: list[str]) -> str:
+    return "\n".join(f"- {t}" for t in tools) if tools else "(none)"
 
 
 def _render(items: list[Item]) -> str:
@@ -112,7 +145,8 @@ def _render(items: list[Item]) -> str:
     for it in items:
         parts.append(
             f"### id: {it.key}\nBEFORE:\n{it.before or '(none)'}\n\n"
-            f"FOLLOW-UP:\n{it.text[:2000]}\n\nAFTER:\n{it.after or '(none)'}\n"
+            f"FOLLOW-UP:\n{it.text[:2000]}\n\nAFTER:\n{it.after or '(none)'}\n\n"
+            f"AGENT ACTIONS AFTER:\n{_actions(it.after_tools)}\n"
         )
     return "\n".join(parts)
 
@@ -177,18 +211,42 @@ def quota_exceeded(cap: int | None, check: Callable[[], int | None] = quota_perc
     return pct if pct is not None and pct >= cap else None
 
 
-def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 300) -> str:
+ANTHROPIC_ENDPOINT = "https://api.z.ai/api/anthropic/v1/messages"
+# Thinking budget per call, as Oh My Pi sends it to z.ai for its thinking levels:
+# minimal 1024, low 2048, medium 8192, high 16384, xhigh/max 32768.
+THINKING_BUDGETS = {"low": 2048, "medium": 8192, "high": 16384, "max": 32768}
+THINKING_LEVEL = "max"
+
+
+def set_thinking_level(level: str) -> None:
+    global THINKING_LEVEL
+    if level not in THINKING_BUDGETS:
+        raise ValueError(f"thinking level must be one of {list(THINKING_BUDGETS)}")
+    THINKING_LEVEL = level
+
+
+def label_version() -> str:
+    """Prompt version plus thinking level: different levels never share cached labels."""
+    return f"{PROMPT_VERSION}-{THINKING_LEVEL}"
+
+
+def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 600) -> str:
+    """One GLM call with explicit thinking budget, via z.ai's Anthropic-compatible API
+    (the same request shape Oh My Pi uses for its thinking levels)."""
+    budget = THINKING_BUDGETS[THINKING_LEVEL]
     body = {
         "model": MODEL,
-        "max_tokens": 16000,  # thinking stays enabled (user rule); leave room for it
-        "thinking": {"type": "enabled"},
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "max_tokens": budget + 8000,
+        "thinking": {"type": "enabled", "budget_tokens": budget},
+        "system": system,
+        "messages": [{"role": "user", "content": user}],
     }
     req = urllib.request.Request(
-        ENDPOINT,
+        ANTHROPIC_ENDPOINT,
         data=json.dumps(body).encode(),
         headers={
             "Authorization": f"Bearer {PLACEHOLDER_KEY}",
+            "anthropic-version": "2023-06-01",
             "content-type": "application/json",
         },
     )
@@ -197,10 +255,10 @@ def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 300) -> str:
         with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
             data = json.load(r)
     except urllib.error.HTTPError as e:
-        body = e.read().decode(errors="replace")
+        body_text = e.read().decode(errors="replace")
         ra = e.headers.get("retry-after")
-        raise GLMHTTPError(e.code, body, float(ra) if ra and ra.isdigit() else None) from None
-    return data["choices"][0]["message"].get("content") or ""
+        raise GLMHTTPError(e.code, body_text, float(ra) if ra and ra.isdigit() else None) from None
+    return "".join(c.get("text", "") for c in data.get("content", []) if c.get("type") == "text")
 
 
 def parse_labels(text: str) -> list[dict]:
@@ -216,6 +274,7 @@ def classify(
     *,
     limit: int | None = None,
     episode_filter: Callable[[str], bool] | None = None,
+    only_keys: set[str] | None = None,
     caller: Callable[[str], str] = call_glm,
     log: Callable[[str], None] = print,
     backoff: float = 10.0,
@@ -230,6 +289,8 @@ def classify(
     with cache_path.open("a") as out:
         for it in iter_items(candidates_jsonl):
             if it.key in cache or (episode_filter and not episode_filter(it.episode_id)):
+                continue
+            if only_keys is not None and it.key not in only_keys:
                 continue
             if (lab := local_label(it)) is not None:
                 rec = {"key": it.key, "episode_id": it.episode_id, "ref": it.ref, **lab}
@@ -288,7 +349,9 @@ def classify(
                             "ref": it.ref,
                             "label": got["label"],
                             "reason": str(got.get("reason", ""))[:300],
-                            "by": f"{MODEL}/{PROMPT_VERSION}",
+                            "kind": str(got.get("kind") or "")[:40],
+                            "side": str(got.get("side") or "")[:10],
+                            "by": f"{MODEL}/{label_version()}",
                         }
                         out.write(json.dumps(rec) + "\n")
                         cache[it.key] = rec

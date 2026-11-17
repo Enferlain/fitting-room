@@ -63,6 +63,7 @@ class FollowUp:
     correction: bool  # keyword heuristic; superseded by `label` once classified
     prev_assistant: str = ""  # end of the assistant message before this follow-up
     next_assistant: str = ""  # start of the assistant reply after it
+    next_tools: list[str] = field(default_factory=list)  # agent's next tool calls (summaries)
     label: str | None = None  # model_error | misunderstanding | scope_change | question | ...
     label_reason: str | None = None
 
@@ -99,7 +100,7 @@ class Episode:
         return [
             f
             for f in self.follow_ups
-            if (f.label == "model_error") or (f.label is None and f.correction)
+            if (f.label in ("model_error", "agent_shortfall")) or (f.label is None and f.correction)
         ]
 
     @property
@@ -170,6 +171,8 @@ def _account_tool(ep: Episode, msg: Message) -> None:
 
 
 CONTEXT_CHARS = 1200
+REPLY_CHARS = 2000
+NEXT_TOOLS = 6
 
 
 def split_episodes(session: Session) -> list[Episode]:
@@ -182,13 +185,15 @@ def split_episodes(session: Session) -> list[Episode]:
     current: Episode | None = None
     last_assistant = ""
     awaiting_reply: list[FollowUp] = []
+    since_human: list[FollowUp] = []  # follow-ups whose "after" window is still open
     for msg in session.messages:
         if msg.role == ASSISTANT:
             last_assistant = msg.text
             for fu in awaiting_reply:
-                fu.next_assistant = msg.text[:CONTEXT_CHARS]
+                fu.next_assistant = msg.text[:REPLY_CHARS]
             awaiting_reply = []
         if msg.role == HUMAN:
+            since_human = []
             if is_substantive(msg.text) and not (current and is_correction(msg.text)):
                 current = Episode(
                     source=session.source,
@@ -215,9 +220,16 @@ def split_episodes(session: Session) -> list[Episode]:
                     prev_assistant=last_assistant[-CONTEXT_CHARS:],
                 )
                 awaiting_reply.append(fu)
+                since_human.append(fu)
                 (current.follow_ups if current else pending).append(fu)
-        elif msg.role == TOOL and current:
-            _account_tool(current, msg)
+        elif msg.role == TOOL:
+            for fu in since_human:
+                if len(fu.next_tools) < NEXT_TOOLS:
+                    fu.next_tools.append(
+                        f"{msg.tool_name}: {' '.join(msg.tool_args.split())[:200]}"
+                    )
+            if current:
+                _account_tool(current, msg)
 
     for ep in episodes:
         if ep.index == 0 and session.commit:

@@ -146,17 +146,27 @@ def calibrate_sample(
 @calibrate_app.command("score")
 def calibrate_score(
     mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+    current: bool = typer.Option(
+        False, help="Score against the current prompt version's labels for the same items"
+    ),
 ) -> None:
     """Compare your answers in check.md with GLM's labels."""
-    from fitting_room.miner.calibrate import score
+    from fitting_room.miner.calibrate import relabel_key, score
 
-    s = score(mining / "calibration")
+    override = None
+    if current:
+        override = relabel_key(
+            mining / "calibration",
+            mining / "candidates.jsonl",
+            mining / "followup-labels.jsonl",
+        )
+    s = score(mining / "calibration", override)
 
     def pct(x):
         return "n/a" if x is None else f"{x:.0%}"
 
     typer.echo(f"answered {s.answered} (unclear {s.unclear}), unanswered {s.unanswered}")
-    typer.echo(f"GLM model_error precision: {pct(s.model_error_precision)}")
+    typer.echo(f"GLM 'agent fell short' precision: {pct(s.model_error_precision)}")
     typer.echo(f"errors GLM missed: {s.missed_errors}")
     kappa = "n/a" if s.kappa is None else f"{s.kappa:.2f}"
     typer.echo(f"agreement: {pct(s.agreement)}, kappa: {kappa} (bar: >=80%, >=0.6)")

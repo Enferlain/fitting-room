@@ -21,7 +21,7 @@ from fitting_room.miner.output import redact
 
 ANSWERS = ("yes", "no", "unclear")
 _ITEM = re.compile(r"^## Item (\d+)\s*$", re.M)
-_ANSWER = re.compile(r"^\*\*Model wrong\?\*\*.*?:\s*(\S*)\s*$", re.M)
+_ANSWER = re.compile(r"^\*\*(?:Model wrong|Agent fell short)\?\*\*.*?:\s*(\S*)\s*$", re.M)
 
 
 def _quote(text: str) -> str:
@@ -56,14 +56,16 @@ def write_sample(
     rng.shuffle(chosen)
 
     lines = [
-        "# Calibration check: was the model actually wrong?",
+        "# Calibration check: did the agent fall short in this exchange?",
         "",
         "For each item, read the agent's message BEFORE, your FOLLOW-UP and the agent's",
-        "reply AFTER, then replace the blank after **Model wrong?** with `yes`, `no` or",
-        "`unclear`.",
+        "reply AFTER. Did the agent fall short anywhere: in its earlier message, or in its",
+        "reply? Replace the blank after **Agent fell short?** with `yes`, `no` or `unclear`.",
         "",
-        "- `yes`: the agent made a real mistake (wrong or broken change, ignored an",
-        "  instruction, false claim, unwanted action, missed something it was asked to do).",
+        "- `yes`: the agent was wrong or fell short: wrong or broken change, ignored an",
+        "  instruction, false claim, unwanted action, missed part of the request, shallow",
+        "  answer, asked/assumed instead of checking context, agreed with you when you",
+        "  were wrong.",
         "- `no`: the agent was fine: you were asking, changing direction, or had",
         "  misunderstood something yourself.",
         "- `unclear`: can't tell from this context.",
@@ -91,7 +93,7 @@ def write_sample(
             "",
             _quote(it.after),
             "",
-            "**Model wrong?** (yes / no / unclear): ",
+            "**Agent fell short?** (yes / no / unclear): ",
             "",
         ]
         rec = cache[it.key]
@@ -140,13 +142,51 @@ def read_answers(check_md: Path) -> dict[int, str]:
     return answers
 
 
-def score(out_dir: Path) -> Score:
+_ITEM_REF = re.compile(r"^`([^`]+)` (\S+)\s*$", re.M)
+
+
+def item_refs(check_md: Path) -> dict[int, tuple[str, str]]:
+    """Item number -> (episode_id, ref), as printed under each item heading."""
+    parts = _ITEM.split(check_md.read_text())
+    out = {}
+    for n, body in zip(parts[1::2], parts[2::2], strict=True):
+        if m := _ITEM_REF.search(body):
+            out[int(n)] = (m.group(1), m.group(2))
+    return out
+
+
+def relabel_key(out_dir: Path, candidates_jsonl: Path, labels_jsonl: Path) -> dict[int, dict]:
+    """Key for scoring against the *current* prompt version's labels of the same items."""
+    from fitting_room.miner.classify import iter_items, load_cache
+
+    cache = load_cache(labels_jsonl)
+    by_ref = {(it.episode_id, it.ref): it.key for it in iter_items(candidates_jsonl)}
+    out = {}
+    for n, ref in item_refs(out_dir / "check.md").items():
+        rec = cache.get(by_ref.get(ref, ""))
+        if rec:
+            out[n] = {
+                "item": n,
+                "label": rec["label"],
+                "reason": rec.get("reason"),
+                "kind": rec.get("kind"),
+            }
+    return out
+
+
+def score(out_dir: Path, key_override: dict[int, dict] | None = None) -> Score:
+    from fitting_room.miner.classify import SHORTFALL_LABELS
+
     answers = read_answers(out_dir / "check.md")
-    key = {k["item"]: k for k in map(json.loads, (out_dir / "key.jsonl").read_text().splitlines())}
+    key = key_override or {
+        k["item"]: k for k in map(json.loads, (out_dir / "key.jsonl").read_text().splitlines())
+    }
     pairs: list[tuple[bool, bool]] = []  # (human_wrong, glm_wrong)
     unclear = unanswered = missed = 0
     disagreements = []
     for item, k in sorted(key.items()):
+        if key_override is not None and item not in key_override:
+            continue
         ans = answers.get(item, "")
         if ans not in ANSWERS:
             unanswered += 1
@@ -154,7 +194,7 @@ def score(out_dir: Path) -> Score:
         if ans == "unclear":
             unclear += 1
             continue
-        human, glm = ans == "yes", k["label"] == "model_error"
+        human, glm = ans == "yes", k["label"] in SHORTFALL_LABELS
         pairs.append((human, glm))
         if human and not glm:
             missed += 1

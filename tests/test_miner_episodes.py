@@ -247,8 +247,8 @@ def test_glm_labels_override_keyword_corrections(tmp_path):
     items = {i.ref: i.key for i in iter_items(candidates)}
     reply = json.dumps(
         [
-            {"id": items["L2"], "label": "misunderstanding", "reason": "user confused"},
-            {"id": items["L3"], "label": "model_error", "reason": "agent conceded"},
+            {"id": items["L2"], "label": "user_misunderstanding", "reason": "user confused"},
+            {"id": items["L3"], "label": "agent_shortfall", "reason": "agent conceded"},
         ]
     )
     cache = tmp_path / "labels.jsonl"
@@ -303,7 +303,7 @@ def test_classify_parallel_labels_everything_once(tmp_path):
 
     def answer(prompt):
         ids = [line.split("id: ")[1] for line in prompt.splitlines() if line.startswith("### id: ")]
-        return json.dumps([{"id": i, "label": "question", "reason": "r"} for i in ids])
+        return json.dumps([{"id": i, "label": "neutral", "reason": "r"} for i in ids])
 
     stats = cl.classify(
         candidates, tmp_path / "l.jsonl", caller=answer, log=lambda _: None, parallel=4
@@ -325,7 +325,7 @@ def test_classify_stops_at_quota_cap(tmp_path):
     def answer(prompt):
         calls.append(1)
         ids = [ln.split("id: ")[1] for ln in prompt.splitlines() if ln.startswith("### id: ")]
-        return json.dumps([{"id": i, "label": "question", "reason": "r"} for i in ids])
+        return json.dumps([{"id": i, "label": "neutral", "reason": "r"} for i in ids])
 
     stats = cl.classify(candidates, tmp_path / "l.jsonl", caller=answer, log=lambda _: None,
                         quota_cap=60, quota_check=lambda: next(readings))  # fmt: skip
@@ -350,3 +350,21 @@ def test_classify_stops_immediately_on_quota_exhausted(tmp_path):
         candidates, tmp_path / "l.jsonl", caller=full, log=lambda _: None, backoff=0
     )
     assert stats["stopped_early"] and len(calls) == 1  # no retries, no further batches
+
+
+def test_followup_records_reply_and_next_tool_calls(repo):
+    msgs = [
+        Message(HUMAN, LONG_A, "t1", "L1"),
+        Message(ASSISTANT, "I added dropout to lora.py.", "t2", "L2"),
+        Message(HUMAN, "did you check the config schema?", "t3", "L3"),
+        Message(TOOL, "", "t4", "L4", "Read", "library/config/schema.py"),
+        Message(ASSISTANT, "Checked: the schema needs a new field.", "t5", "L5"),
+        Message(TOOL, "", "t6", "L6", "Edit", "library/config/schema.py"),
+        Message(HUMAN, LONG_B, "t7", "L7"),
+        Message(TOOL, "", "t8", "L8", "Read", "library/cache.py"),
+    ]
+    first, _ = split_episodes(session(repo, msgs))
+    (fu,) = first.follow_ups
+    assert fu.prev_assistant == "I added dropout to lora.py."
+    assert fu.next_assistant == "Checked: the schema needs a new field."
+    assert fu.next_tools == ["Read: library/config/schema.py", "Edit: library/config/schema.py"]

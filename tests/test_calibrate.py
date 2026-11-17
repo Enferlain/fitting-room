@@ -44,7 +44,7 @@ def test_sample_is_blind_and_weighted(tmp_path):
     assert stats["items"] == 6
     check = (d / "cal/check.md").read_text()
     assert "model_error" not in check and "misunderstanding" not in check.split("## Item 1")[1]
-    assert sum(ln.startswith("**Model wrong?**") for ln in check.splitlines()) == 6
+    assert sum(ln.startswith("**Agent fell short?**") for ln in check.splitlines()) == 6
     key = [json.loads(x) for x in (d / "cal/key.jsonl").read_text().splitlines()]
     assert sorted(k["label"] for k in key).count("model_error") == 3
 
@@ -68,7 +68,7 @@ def test_score(tmp_path):
     for line in text.splitlines():
         if line.startswith("## Item "):
             item = int(line.split()[-1])
-        if line.startswith("**Model wrong?**"):
+        if line.startswith("**Agent fell short?**"):
             # agree everywhere except: one GLM error you call "no", one question you call "yes"
             glm_err = key[item] == "model_error"
             ans = "yes" if glm_err else "no"
