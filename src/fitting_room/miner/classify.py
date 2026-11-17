@@ -117,6 +117,21 @@ def _render(items: list[Item]) -> str:
     return "\n".join(parts)
 
 
+class GLMHTTPError(OSError):
+    """HTTP error from z.ai with its response body and Retry-After (seconds), if any."""
+
+    def __init__(self, code: int, body: str, retry_after: float | None):
+        self.code, self.body, self.retry_after = code, body, retry_after
+        super().__init__(f"HTTP {code}: {body[:300]}")
+
+
+def retry_delay(err: Exception, attempt: int, backoff: float) -> float:
+    delay = backoff * (2**attempt)
+    if isinstance(err, GLMHTTPError) and err.retry_after:
+        delay = max(delay, err.retry_after)
+    return delay
+
+
 def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 300) -> str:
     body = {
         "model": MODEL,
@@ -133,8 +148,13 @@ def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 300) -> str:
         },
     )
     ctx = ssl.create_default_context(cafile=CA_BUNDLE)
-    with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
-        data = json.load(r)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
+            data = json.load(r)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        ra = e.headers.get("retry-after")
+        raise GLMHTTPError(e.code, body, float(ra) if ra and ra.isdigit() else None) from None
     return data["choices"][0]["message"].get("content") or ""
 
 
@@ -184,7 +204,7 @@ def classify(
                     return parse_labels(caller(_render(batches[index])))
                 except (urllib.error.URLError, ValueError, TimeoutError, OSError) as err:
                     log(f"batch {index + 1} attempt {attempt + 1} failed: {err}")
-                    time.sleep(backoff * (2**attempt))
+                    time.sleep(retry_delay(err, attempt, backoff))
             return None
 
         # Waves of `parallel` concurrent calls; results are written from this thread only.

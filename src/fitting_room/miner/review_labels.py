@@ -22,6 +22,7 @@ from fitting_room.miner.classify import (
     call_glm,
     load_cache,
     parse_labels,
+    retry_delay,
 )
 
 LABELS = ("real_bug_fixed", "real_bug_unfixed", "false_positive", "minor_only", "no_findings")
@@ -98,7 +99,7 @@ def label_reviews(
                 return parse_labels(caller(_render(batches[index])))
             except (urllib.error.URLError, ValueError, TimeoutError, OSError) as err:
                 log(f"review batch {index + 1} attempt {attempt + 1} failed: {err}")
-                time.sleep(backoff * (2**attempt))
+                time.sleep(retry_delay(err, attempt, backoff))
         return None
 
     calls = failures = added = consecutive = 0
