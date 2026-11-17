@@ -16,12 +16,15 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fitting_room.miner.classify import (
+    DEFAULT_QUOTA_CAP,
     MAX_CONSECUTIVE_FAILURES,
     MODEL,
     RETRIES,
+    _quota_percent,
     call_glm,
     load_cache,
     parse_labels,
+    quota_exceeded,
     retry_delay,
 )
 
@@ -80,6 +83,8 @@ def label_reviews(
     caller: Callable[[str], str] | None = None,
     log: Callable[[str], None] = print,
     backoff: float = 10.0,
+    quota_cap: int | None = DEFAULT_QUOTA_CAP,
+    quota_check: Callable[[], int | None] | None = None,
 ) -> dict:
     if caller is None:
 
@@ -107,6 +112,10 @@ def label_reviews(
     width = max(1, parallel)
     with cache_path.open("a") as out, ThreadPoolExecutor(max_workers=width) as pool:
         for start in range(0, len(batches), width):
+            if (pct := quota_exceeded(quota_cap, quota_check or _quota_percent())) is not None:
+                log(f"stopping: 5-hour quota at {pct}% (cap {quota_cap}%)")
+                stopped = True
+                break
             wave = range(start, min(len(batches), start + width))
             for index, labels in zip(wave, pool.map(fetch, wave), strict=True):
                 if labels is None:

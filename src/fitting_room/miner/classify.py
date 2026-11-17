@@ -132,6 +132,40 @@ def retry_delay(err: Exception, attempt: int, backoff: float) -> float:
     return delay
 
 
+QUOTA_ENDPOINT = "https://api.z.ai/api/monitor/usage/quota/limit"
+DEFAULT_QUOTA_CAP = 60  # stop labelling once the 5-hour token window is this full (%)
+
+
+def quota_percent(timeout: float = 30) -> int | None:
+    """Current use of the plan's 5-hour token window in percent (None if unknown)."""
+    req = urllib.request.Request(QUOTA_ENDPOINT, headers={"Authorization": PLACEHOLDER_KEY})
+    ctx = ssl.create_default_context(cafile=CA_BUNDLE)
+    try:
+        with urllib.request.urlopen(req, context=ctx, timeout=timeout) as r:
+            data = json.load(r)
+    except (OSError, ValueError):
+        return None
+    for lim in (data.get("data") or {}).get("limits") or []:
+        if lim.get("type") == "TOKENS_LIMIT":
+            return int(lim.get("percentage") or 0)
+    return None
+
+
+def _quota_percent() -> Callable[[], int | None]:
+    """Resolve the quota checker at call time (tests replace ``quota_percent``)."""
+    import fitting_room.miner.classify as mod
+
+    return mod.quota_percent
+
+
+def quota_exceeded(cap: int | None, check: Callable[[], int | None] = quota_percent) -> int | None:
+    """Return the current percentage if it is at or above ``cap``, else None."""
+    if cap is None:
+        return None
+    pct = check()
+    return pct if pct is not None and pct >= cap else None
+
+
 def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 300) -> str:
     body = {
         "model": MODEL,
@@ -175,6 +209,8 @@ def classify(
     log: Callable[[str], None] = print,
     backoff: float = 10.0,
     parallel: int = 1,
+    quota_cap: int | None = DEFAULT_QUOTA_CAP,
+    quota_check: Callable[[], int | None] | None = None,
 ) -> dict:
     """Label follow-ups not yet in the cache. Returns counts."""
     cache = load_cache(cache_path)
@@ -210,6 +246,10 @@ def classify(
         # Waves of `parallel` concurrent calls; results are written from this thread only.
         with ThreadPoolExecutor(max_workers=max(1, parallel)) as pool:
             for wave_start in range(0, n_batches, max(1, parallel)):
+                if (pct := quota_exceeded(quota_cap, quota_check or _quota_percent())) is not None:
+                    log(f"stopping: 5-hour quota at {pct}% (cap {quota_cap}%)")
+                    stopped = True
+                    break
                 wave = range(wave_start, min(n_batches, wave_start + max(1, parallel)))
                 for index, labels in zip(wave, pool.map(fetch, wave), strict=True):
                     if labels is None:

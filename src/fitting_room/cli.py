@@ -72,6 +72,7 @@ def classify(
     limit: int = typer.Option(None, help="Label at most this many follow-ups (pilot runs)"),
     out: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
     parallel: int = typer.Option(1, help="Concurrent GLM calls (mind the plan's rate limits)"),
+    quota_cap: int = typer.Option(60, help="Stop when the 5-hour GLM window reaches this %"),
 ) -> None:
     """Label mined follow-ups with GLM (model_error, misunderstanding, ...); cached.
 
@@ -81,7 +82,11 @@ def classify(
     from fitting_room.miner.classify import classify as run_classify
 
     stats = run_classify(
-        out / "candidates.jsonl", out / "followup-labels.jsonl", limit=limit, parallel=parallel
+        out / "candidates.jsonl",
+        out / "followup-labels.jsonl",
+        limit=limit,
+        parallel=parallel,
+        quota_cap=quota_cap,
     )
     typer.echo(stats)
 
@@ -102,13 +107,18 @@ def reviews(
 def label_reviews_cmd(
     limit: int = typer.Option(None, help="Label at most this many reviews (pilot runs)"),
     parallel: int = typer.Option(1, help="Concurrent GLM calls"),
+    quota_cap: int = typer.Option(60, help="Stop when the 5-hour GLM window reaches this %"),
     mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
 ) -> None:
     """Label extracted reviews with GLM: real_bug_fixed, false_positive, ...; cached."""
     from fitting_room.miner.review_labels import label_reviews
 
     stats = label_reviews(
-        mining / "reviews.jsonl", mining / "review-labels.jsonl", limit=limit, parallel=parallel
+        mining / "reviews.jsonl",
+        mining / "review-labels.jsonl",
+        limit=limit,
+        parallel=parallel,
+        quota_cap=quota_cap,
     )
     typer.echo(stats)
 

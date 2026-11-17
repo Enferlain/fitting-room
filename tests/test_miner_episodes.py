@@ -311,3 +311,22 @@ def test_classify_parallel_labels_everything_once(tmp_path):
     assert stats["labelled_by_model"] == 30 and stats["model_calls"] == 4
     keys = [json.loads(x)["key"] for x in (tmp_path / "l.jsonl").read_text().splitlines()]
     assert len(keys) == len(set(keys)) == 30
+
+
+def test_classify_stops_at_quota_cap(tmp_path):
+    from fitting_room.miner import classify as cl
+
+    candidates = tmp_path / "c.jsonl"
+    fus = [{"ref": f"L{i}", "text": f"why is module {i} like this?"} for i in range(24)]
+    candidates.write_text(json.dumps({"episode_id": "e", "follow_ups": fus}) + "\n")
+    readings = iter([10, 70, 70])
+    calls = []
+
+    def answer(prompt):
+        calls.append(1)
+        ids = [ln.split("id: ")[1] for ln in prompt.splitlines() if ln.startswith("### id: ")]
+        return json.dumps([{"id": i, "label": "question", "reason": "r"} for i in ids])
+
+    stats = cl.classify(candidates, tmp_path / "l.jsonl", caller=answer, log=lambda _: None,
+                        quota_cap=60, quota_check=lambda: next(readings))  # fmt: skip
+    assert stats["stopped_early"] and len(calls) == 1 and stats["labelled_by_model"] == 8
