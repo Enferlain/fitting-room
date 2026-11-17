@@ -1,0 +1,5 @@
+# Oh My Pi driven by GLM 5.3 Flash through z.ai (placeholder key; Agent Vault injects).
+harness = "omp"
+harness_version = "18.12.6"
+model = "zai/glm-5.3-flash"
+effort = "medium"

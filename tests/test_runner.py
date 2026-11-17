@@ -194,3 +194,18 @@ def test_unsupported_pair_refused(tmp_path):
             invoke=fake_harbor([]), now=NOW,
         )  # fmt: skip
     assert "not supported yet" in exc.value.problems[0]
+
+
+def test_omp_glm_mapping(tmp_path, monkeypatch):
+    from fitting_room.runner import agent_spec_for
+
+    run = RunConfig(
+        name="omp-glm", harness="omp", harness_version="18.12.6", model="zai/glm-5.3", effort="max"
+    )
+    spec = agent_spec_for(run)
+    agent = spec.to_job_agent()
+    assert agent["import_path"] == "fitting_room.adapters.omp:OhMyPi" and "name" not in agent
+    assert agent["model_name"] == "zai/glm-5.3"
+    assert agent["env"] == {"ZAI_API_KEY": "av-managed-key"}
+    assert agent["kwargs"] == {"version": "18.12.6", "reasoning_effort": "max"}
+    assert spec.needs_agent_vault_ca

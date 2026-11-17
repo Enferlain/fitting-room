@@ -92,11 +92,28 @@ def _opencode_local(run: RunConfig) -> AgentSpec:
     )
 
 
+def _omp_zai(run: RunConfig) -> AgentSpec:
+    # Oh My Pi's built-in zai provider reads ZAI_API_KEY and picks z.ai's API per model.
+    p = PROVIDERS["zai"]
+    key = {"ZAI_API_KEY": p.placeholder_key}
+    return AgentSpec(
+        import_path="fitting_room.adapters.omp:OhMyPi",
+        model_name=f"zai/{_model_id(run)}",
+        kwargs={"version": run.harness_version, "reasoning_effort": run.effort},
+        api_key_name="ZAI_API_KEY",
+        env=key,
+        host_env=key,
+        needs_agent_vault_ca=True,
+        extra_allowed_hosts=p.allowed_hosts,
+    )
+
+
 #: Harness x provider pairs that have passed a smoke run (docs/harnesses.md).
 #: Anything else is refused rather than scored.
 SUPPORTED: dict[tuple[str, str], Callable[[RunConfig], AgentSpec]] = {
     ("claude-code", "zai"): _claude_code_zai,
     ("opencode", "local"): _opencode_local,
+    ("omp", "zai"): _omp_zai,
 }
 
 

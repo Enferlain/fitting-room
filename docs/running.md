@@ -56,7 +56,7 @@ The provider is the part of `model` before the slash. Benchmarked models are GLM
 | `zai` | `zai/glm-5.3`, `zai/glm-5.3-flash` | z.ai's Anthropic-compatible endpoint with the placeholder key `av-managed-key`. The host's Agent Vault substitutes the real key in-flight; `fr run` mounts Agent Vault's public CA into the sandbox through a generated Compose overlay. Agent Vault must be unlocked. |
 | `local` | `local/qwen3.5-9b` | The serving profile's endpoint at `host.docker.internal:18080` with a placeholder key. Start it first with `uv run fr serve up <profile>`; `fr run` refuses local runs when it is down. |
 
-Only harness × provider pairs that have passed a smoke run are accepted (see `docs/harnesses.md`); others are refused before anything starts. Currently: `claude-code` × `zai`, `opencode` × `local`.
+Only harness × provider pairs that have passed a smoke run are accepted (see `docs/harnesses.md`); others are refused before anything starts. Currently: `claude-code` × `zai`, `omp` × `zai`, `opencode` × `local`.
 
 ```sh
 uv run fr serve up qwen35-9b-3080   # only needed for local models

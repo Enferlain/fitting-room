@@ -1,0 +1,6 @@
+# Single-pair check for Oh My Pi + GLM 5.3 Flash on the hello spike.
+runs = ["omp-glm53flash-medium"]
+repeats = 1
+
+[tasks]
+include = ["spikes/hello"]
