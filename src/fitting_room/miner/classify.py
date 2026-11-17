@@ -35,6 +35,8 @@ CA_BUNDLE = "/etc/ssl/certs/ca-bundle.crt"
 MODEL = "glm-5.3-flash"
 BATCH = 8
 PROMPT_VERSION = "followup-v1"
+RETRIES = 2  # extra attempts per batch, with backoff
+MAX_CONSECUTIVE_FAILURES = 5  # e.g. Agent Vault locked: stop instead of burning calls
 
 SYSTEM = """You label a human's follow-up messages to an AI coding agent.
 For each item you get: the end of the agent's previous message (BEFORE), the human's
@@ -150,6 +152,7 @@ def classify(
     episode_filter: Callable[[str], bool] | None = None,
     caller: Callable[[str], str] = call_glm,
     log: Callable[[str], None] = print,
+    backoff: float = 10.0,
 ) -> dict:
     """Label follow-ups not yet in the cache. Returns counts."""
     cache = load_cache(cache_path)
@@ -168,16 +171,27 @@ def classify(
             todo.append(it)
             if limit is not None and len(todo) >= limit:
                 break
-        calls = failures = added_model = 0
+        calls = failures = added_model = consecutive = 0
+        stopped = False
         for i in range(0, len(todo), BATCH):
             batch = todo[i : i + BATCH]
-            try:
-                labels = parse_labels(caller(_render(batch)))
-            except (urllib.error.URLError, ValueError, TimeoutError) as err:
+            labels = None
+            for attempt in range(RETRIES + 1):
+                try:
+                    labels = parse_labels(caller(_render(batch)))
+                    break
+                except (urllib.error.URLError, ValueError, TimeoutError, OSError) as err:
+                    log(f"batch {i // BATCH + 1} attempt {attempt + 1} failed: {err}")
+                    time.sleep(backoff * (2**attempt))
+            if labels is None:
                 failures += 1
-                log(f"batch {i // BATCH} failed: {err}")
-                time.sleep(2)
+                consecutive += 1
+                if consecutive >= MAX_CONSECUTIVE_FAILURES:
+                    log(f"stopping: {consecutive} consecutive failed batches")
+                    stopped = True
+                    break
                 continue
+            consecutive = 0
             calls += 1
             by_id = {str(x.get("id")): x for x in labels if isinstance(x, dict)}
             for it in batch:
@@ -196,11 +210,15 @@ def classify(
                 out.flush()
                 cache[it.key] = rec
                 added_model += 1
-            log(f"batch {i // BATCH + 1}/{(len(todo) + BATCH - 1) // BATCH}: {len(by_id)} labels")
+            log(
+                f"{time.strftime('%H:%M:%S')} batch {i // BATCH + 1}/"
+                f"{(len(todo) + BATCH - 1) // BATCH}: {len(by_id)} labels"
+            )
     return {
         "labelled_by_rule": added_local,
         "labelled_by_model": added_model,
         "model_calls": calls,
         "failed_batches": failures,
+        "stopped_early": stopped,
         "cached_total": len(cache),
     }

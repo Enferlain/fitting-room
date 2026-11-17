@@ -255,7 +255,7 @@ def test_glm_labels_override_keyword_corrections(tmp_path):
     stats = classify(candidates, cache, caller=lambda _: reply, log=lambda _: None)
     assert stats == {
         "labelled_by_rule": 1, "labelled_by_model": 2, "model_calls": 1,
-        "failed_batches": 0, "cached_total": 3,
+        "failed_batches": 0, "stopped_early": False, "cached_total": 3,
     }  # fmt: skip
     # Second run: everything cached, no calls.
     again = classify(candidates, cache, caller=lambda _: 1 / 0, log=lambda _: None)
@@ -272,3 +272,23 @@ def test_glm_labels_override_keyword_corrections(tmp_path):
     )  # fmt: skip
     assert apply_labels([e], cache) == 3
     assert [f.ref for f in e.corrections] == ["L3"]  # keyword hit L2 overridden by label
+
+
+def test_classify_stops_after_consecutive_failures(tmp_path, monkeypatch):
+    from fitting_room.miner import classify as cl
+
+    monkeypatch.setattr(cl, "MAX_CONSECUTIVE_FAILURES", 2)
+    candidates = tmp_path / "c.jsonl"
+    fus = [{"ref": f"L{i}", "text": f"why did you change file {i}?"} for i in range(40)]
+    candidates.write_text(json.dumps({"episode_id": "e", "follow_ups": fus}) + "\n")
+    calls = []
+
+    def broken(_):
+        calls.append(1)
+        raise OSError("connection refused")
+
+    stats = cl.classify(
+        candidates, tmp_path / "l.jsonl", caller=broken, log=lambda _: None, backoff=0
+    )
+    assert stats["stopped_early"] and stats["failed_batches"] == 2
+    assert len(calls) == 2 * (cl.RETRIES + 1)  # not all 5 batches
