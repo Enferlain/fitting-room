@@ -86,6 +86,43 @@ def classify(
     typer.echo(stats)
 
 
+calibrate_app = typer.Typer(help="Blind human check of GLM follow-up labels.")
+app.add_typer(calibrate_app, name="calibrate")
+
+
+@calibrate_app.command("sample")
+def calibrate_sample(
+    mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+) -> None:
+    """Write work/mining/calibration/check.md (blind) and key.jsonl."""
+    from fitting_room.miner.calibrate import write_sample
+
+    out = mining / "calibration"
+    stats = write_sample(mining / "candidates.jsonl", mining / "followup-labels.jsonl", out)
+    typer.echo(f"{stats['items']} items -> {out / 'check.md'} (available: {stats['available']})")
+
+
+@calibrate_app.command("score")
+def calibrate_score(
+    mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+) -> None:
+    """Compare your answers in check.md with GLM's labels."""
+    from fitting_room.miner.calibrate import score
+
+    s = score(mining / "calibration")
+
+    def pct(x):
+        return "n/a" if x is None else f"{x:.0%}"
+
+    typer.echo(f"answered {s.answered} (unclear {s.unclear}), unanswered {s.unanswered}")
+    typer.echo(f"GLM model_error precision: {pct(s.model_error_precision)}")
+    typer.echo(f"errors GLM missed: {s.missed_errors}")
+    kappa = "n/a" if s.kappa is None else f"{s.kappa:.2f}"
+    typer.echo(f"agreement: {pct(s.agreement)}, kappa: {kappa} (bar: >=80%, >=0.6)")
+    for d in s.disagreements:
+        typer.echo(f"  item {d['item']}: you={d['you']} glm={d['glm']} ({d['why']})")
+
+
 serve_app = typer.Typer(help="Start/stop benchmark serving profiles (local models).")
 app.add_typer(serve_app, name="serve")
 
