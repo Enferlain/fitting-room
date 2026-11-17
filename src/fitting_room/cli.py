@@ -53,6 +53,20 @@ def run(
         raise typer.Exit(1)
 
 
+@app.command()
+def mine(
+    repo: list[str] = typer.Option([], help="Repo name to include (repeatable; default all)"),
+    out: Path = typer.Option(Path("work/mining"), help="Output directory (gitignored)"),
+) -> None:
+    """Mine local agent session histories into reviewable task candidates."""
+    from fitting_room.miner.pipeline import mine as run_mine
+
+    stats = run_mine(repo, out)
+    for key, value in stats.items():
+        typer.echo(f"{key}: {value}")
+    typer.echo(f"wrote {out / 'candidates.md'} and {out / 'candidates.jsonl'}")
+
+
 serve_app = typer.Typer(help="Start/stop benchmark serving profiles (local models).")
 app.add_typer(serve_app, name="serve")
 

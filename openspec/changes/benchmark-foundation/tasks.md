@@ -42,12 +42,12 @@
 
 ## 6. Session miner
 
-- [ ] 6.1 Define the candidate record and implement the Codex reader (subagent skip, commit from session metadata), and verify on fixture sessions with unit tests
-- [ ] 6.2 Implement the Claude Code reader with commit inference from branch and timestamp (marked inferred), and verify on fixtures including an unrecoverable-commit case
+- [x] 6.1 Define the candidate record and implement the Codex reader (subagent skip, commit from session metadata), and verify on fixture sessions with unit tests
+- [x] 6.2 Implement the Claude Code reader with commit inference from branch and timestamp (marked inferred), and verify on fixtures including an unrecoverable-commit case
 - [x] 6.3 Implement the Hermes reader (read-only SQLite, `parent_session_id` skip), and verify on a fixture DB and that the file is opened read-only
 - [x] 6.4 Implement the Oh My Pi reader, and verify on fixture sessions
-- [ ] 6.5 Implement the repo filter, gitleaks redaction (regex fallback with warning) and `candidates.md`/`candidates.jsonl` output, and verify a fixture containing a fake API key comes out redacted with the count reported
-- [ ] 6.6 Run `fr mine` on the real history for the five priority repos, and verify that counts per source, repo and track are reported and that output stays under `work/` and out of git
+- [x] 6.5 Implement the repo filter, gitleaks redaction (regex fallback with warning) and `candidates.md`/`candidates.jsonl` output, and verify a fixture containing a fake API key comes out redacted with the count reported
+- [x] 6.6 Run `fr mine` on the real history for the five priority repos, and verify that counts per source, repo and track are reported and that output stays under `work/` and out of git
 
 ## 7. Task authoring
 

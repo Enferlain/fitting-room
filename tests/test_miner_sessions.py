@@ -198,3 +198,18 @@ def test_iter_sessions_all_sources(tmp_path):
     assert sorted({s.source for s in found}) == ["claude", "codex", "hermes", "omp"]
     assert sum(s.source == "claude" for s in found) == 1  # subagents/ dir not read
     assert all(m.role != HUMAN or m.text for s in found for m in s.messages)
+
+
+def test_codex_ide_wrapper_is_stripped(tmp_path):
+    from fitting_room.miner.sessions import clean_human
+
+    wrapped = (
+        "# Context from my IDE setup:\n\n## Active file: library/x.py\n\n## Open tabs:\n- x.py\n\n"
+        "## My request for Codex:\nWhy does the cache rebuild twice?"
+    )
+    assert clean_human(wrapped) == "Why does the cache rebuild twice?"
+    assert clean_human("plain request") == "plain request"
+    rows = codex_rows()
+    rows[3]["payload"]["content"] = [{"text": wrapped}]
+    s = read_codex(jsonl(tmp_path / "r.jsonl", rows))
+    assert [m.text for m in s.human_messages] == ["Why does the cache rebuild twice?"]
