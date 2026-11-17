@@ -86,6 +86,18 @@ def classify(
     typer.echo(stats)
 
 
+@app.command()
+def reviews(
+    repo: list[str] = typer.Option([], help="Repo name to include (repeatable; default all)"),
+    out: Path = typer.Option(Path("work/mining/reviews.jsonl"), help="Output file"),
+) -> None:
+    """Extract review passes (review-mcp, Claude review agents) with what followed."""
+    from fitting_room.miner.reviews import write_reviews
+
+    for key, value in write_reviews(out, repo or None).items():
+        typer.echo(f"{key}: {value}")
+
+
 calibrate_app = typer.Typer(help="Blind human check of GLM follow-up labels.")
 app.add_typer(calibrate_app, name="calibrate")
 
