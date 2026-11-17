@@ -55,14 +55,25 @@ def apply_review_bugs(episodes: list[Episode], out_dir: Path) -> int:
 
 
 def apply_labels(episodes: list[Episode], labels_path: Path) -> int:
-    """Attach cached GLM follow-up labels (see miner.classify). Returns how many applied."""
+    """Attach cached GLM follow-up labels (see miner.classify). Uses the current label
+    version when present, else falls back to older versions (v1) for the same follow-up."""
+    import hashlib
+
     from fitting_room.miner.classify import cache_key, load_cache
 
     cache = load_cache(labels_path)
+
+    def legacy_key(version: str, episode_id: str, ref: str, text: str) -> str:
+        raw = f"{version}\0{episode_id}\0{ref}\0{text}".encode()
+        return hashlib.sha256(raw).hexdigest()[:24]
+
     applied = 0
     for ep in episodes:
         for fu in ep.follow_ups:
             rec = cache.get(cache_key(ep.episode_id, fu.ref, fu.text))
+            for old in ("followup-v1",):
+                if rec is None:
+                    rec = cache.get(legacy_key(old, ep.episode_id, fu.ref, fu.text))
             if rec:
                 fu.label, fu.label_reason = rec["label"], rec.get("reason")
                 applied += 1
