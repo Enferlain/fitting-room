@@ -180,3 +180,66 @@ def test_codex_code_mode_review_resolved_through_wait(tmp_path):
     ]
     (rev,) = reviews_from_codex(jsonl(tmp_path / "r.jsonl", rows))
     assert rev.report.startswith("## Code Review")
+
+
+def test_label_reviews_parallel_and_cached(tmp_path):
+    from fitting_room.miner.review_labels import label_reviews, review_key
+
+    recs = [
+        {
+            "review_id": f"codex:s@L{i}",
+            "request": "r",
+            "report": f"report {i}",
+            "next_assistant": "ok",
+            "edits_after": [],
+            "tests_after": 0,
+        }
+        for i in range(7)
+    ]
+    src = tmp_path / "reviews.jsonl"
+    src.write_text("".join(json.dumps(r) + "\n" for r in recs))
+
+    def answer(prompt):
+        ids = [ln.split("id: ")[1] for ln in prompt.splitlines() if ln.startswith("### id: ")]
+        return json.dumps(
+            [
+                {"id": i, "label": "real_bug_fixed", "bug": "off by one", "reason": "fixed"}
+                for i in ids
+            ]
+        )
+
+    cache = tmp_path / "labels.jsonl"
+    stats = label_reviews(src, cache, parallel=2, caller=answer, log=lambda _: None)
+    assert stats["labelled"] == 7 and stats["model_calls"] == 3
+    again = label_reviews(src, cache, parallel=2, caller=lambda _: 1 / 0, log=lambda _: None)
+    assert again["model_calls"] == 0 and again["cached_total"] == 7
+    keys = {json.loads(x)["key"] for x in cache.read_text().splitlines()}
+    assert keys == {review_key(r) for r in recs}
+
+
+def test_review_labeller_sends_review_prompt(monkeypatch, tmp_path):
+    from fitting_room.miner import classify, review_labels
+
+    seen = {}
+
+    def fake_call(user, *, system=classify.SYSTEM, timeout=300):
+        seen["system"] = system
+        return "[]"
+
+    monkeypatch.setattr(review_labels, "call_glm", fake_call)
+    src = tmp_path / "r.jsonl"
+    src.write_text(
+        json.dumps(
+            {
+                "review_id": "x",
+                "request": "",
+                "report": "r",
+                "next_assistant": "",
+                "edits_after": [],
+                "tests_after": 0,
+            }
+        )
+        + "\n"
+    )
+    review_labels.label_reviews(src, tmp_path / "l.jsonl", log=lambda _: None)
+    assert seen["system"] is review_labels.SYSTEM

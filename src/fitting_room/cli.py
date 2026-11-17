@@ -98,6 +98,21 @@ def reviews(
         typer.echo(f"{key}: {value}")
 
 
+@app.command("label-reviews")
+def label_reviews_cmd(
+    limit: int = typer.Option(None, help="Label at most this many reviews (pilot runs)"),
+    parallel: int = typer.Option(1, help="Concurrent GLM calls"),
+    mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+) -> None:
+    """Label extracted reviews with GLM: real_bug_fixed, false_positive, ...; cached."""
+    from fitting_room.miner.review_labels import label_reviews
+
+    stats = label_reviews(
+        mining / "reviews.jsonl", mining / "review-labels.jsonl", limit=limit, parallel=parallel
+    )
+    typer.echo(stats)
+
+
 calibrate_app = typer.Typer(help="Blind human check of GLM follow-up labels.")
 app.add_typer(calibrate_app, name="calibrate")
 

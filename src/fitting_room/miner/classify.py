@@ -117,12 +117,12 @@ def _render(items: list[Item]) -> str:
     return "\n".join(parts)
 
 
-def call_glm(user: str, *, timeout: float = 300) -> str:
+def call_glm(user: str, *, system: str = SYSTEM, timeout: float = 300) -> str:
     body = {
         "model": MODEL,
         "max_tokens": 16000,  # thinking stays enabled (user rule); leave room for it
         "thinking": {"type": "enabled"},
-        "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": user}],
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
     }
     req = urllib.request.Request(
         ENDPOINT,
