@@ -330,3 +330,23 @@ def test_classify_stops_at_quota_cap(tmp_path):
     stats = cl.classify(candidates, tmp_path / "l.jsonl", caller=answer, log=lambda _: None,
                         quota_cap=60, quota_check=lambda: next(readings))  # fmt: skip
     assert stats["stopped_early"] and len(calls) == 1 and stats["labelled_by_model"] == 8
+
+
+def test_classify_stops_immediately_on_quota_exhausted(tmp_path):
+    from fitting_room.miner import classify as cl
+
+    candidates = tmp_path / "c.jsonl"
+    fus = [{"ref": f"L{i}", "text": f"why is module {i} like this?"} for i in range(24)]
+    candidates.write_text(json.dumps({"episode_id": "e", "follow_ups": fus}) + "\n")
+    calls = []
+
+    def full(_):
+        calls.append(1)
+        raise cl.GLMHTTPError(
+            429, '{"error":{"code":"1308","message":"Usage limit reached for 5 hour"}}', None
+        )
+
+    stats = cl.classify(
+        candidates, tmp_path / "l.jsonl", caller=full, log=lambda _: None, backoff=0
+    )
+    assert stats["stopped_early"] and len(calls) == 1  # no retries, no further batches

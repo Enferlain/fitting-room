@@ -72,7 +72,9 @@ def classify(
     limit: int = typer.Option(None, help="Label at most this many follow-ups (pilot runs)"),
     out: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
     parallel: int = typer.Option(1, help="Concurrent GLM calls (mind the plan's rate limits)"),
-    quota_cap: int = typer.Option(60, help="Stop when the 5-hour GLM window reaches this %"),
+    quota_cap: int = typer.Option(
+        None, help="Optional: pause when the 5-hour GLM window reaches this % (off by default)"
+    ),
 ) -> None:
     """Label mined follow-ups with GLM (model_error, misunderstanding, ...); cached.
 
@@ -107,7 +109,9 @@ def reviews(
 def label_reviews_cmd(
     limit: int = typer.Option(None, help="Label at most this many reviews (pilot runs)"),
     parallel: int = typer.Option(1, help="Concurrent GLM calls"),
-    quota_cap: int = typer.Option(60, help="Stop when the 5-hour GLM window reaches this %"),
+    quota_cap: int = typer.Option(
+        None, help="Optional: pause when the 5-hour GLM window reaches this % (off by default)"
+    ),
     mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
 ) -> None:
     """Label extracted reviews with GLM: real_bug_fixed, false_positive, ...; cached."""

@@ -125,6 +125,14 @@ class GLMHTTPError(OSError):
         super().__init__(f"HTTP {code}: {body[:300]}")
 
 
+class QuotaExhausted(Exception):
+    """z.ai error 1308: the plan's 5-hour window is full; retrying before reset is useless."""
+
+
+def is_quota_exhausted(err: Exception) -> bool:
+    return isinstance(err, GLMHTTPError) and err.code == 429 and '"1308"' in err.body
+
+
 def retry_delay(err: Exception, attempt: int, backoff: float) -> float:
     delay = backoff * (2**attempt)
     if isinstance(err, GLMHTTPError) and err.retry_after:
@@ -133,7 +141,10 @@ def retry_delay(err: Exception, attempt: int, backoff: float) -> float:
 
 
 QUOTA_ENDPOINT = "https://api.z.ai/api/monitor/usage/quota/limit"
-DEFAULT_QUOTA_CAP = 60  # stop labelling once the 5-hour token window is this full (%)
+# Off by default: glm-5.3-flash labelling has not been seen to consume the plan's 5-hour
+# token window; it is only *blocked* once the window is full (error 1308). Set a cap to
+# pause labelling anyway when the window gets busy.
+DEFAULT_QUOTA_CAP: int | None = None
 
 
 def quota_percent(timeout: float = 30) -> int | None:
@@ -240,6 +251,8 @@ def classify(
                     return parse_labels(caller(_render(batches[index])))
                 except (urllib.error.URLError, ValueError, TimeoutError, OSError) as err:
                     log(f"batch {index + 1} attempt {attempt + 1} failed: {err}")
+                    if is_quota_exhausted(err):
+                        raise QuotaExhausted(str(err)) from None
                     time.sleep(retry_delay(err, attempt, backoff))
             return None
 
@@ -251,7 +264,13 @@ def classify(
                     stopped = True
                     break
                 wave = range(wave_start, min(n_batches, wave_start + max(1, parallel)))
-                for index, labels in zip(wave, pool.map(fetch, wave), strict=True):
+                try:
+                    results = list(pool.map(fetch, wave))
+                except QuotaExhausted as err:
+                    log(f"stopping: 5-hour window full, resume after it resets ({err})")
+                    stopped = True
+                    break
+                for index, labels in zip(wave, results, strict=True):
                     if labels is None:
                         failures += 1
                         consecutive += 1

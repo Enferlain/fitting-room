@@ -20,8 +20,10 @@ from fitting_room.miner.classify import (
     MAX_CONSECUTIVE_FAILURES,
     MODEL,
     RETRIES,
+    QuotaExhausted,
     _quota_percent,
     call_glm,
+    is_quota_exhausted,
     load_cache,
     parse_labels,
     quota_exceeded,
@@ -104,6 +106,8 @@ def label_reviews(
                 return parse_labels(caller(_render(batches[index])))
             except (urllib.error.URLError, ValueError, TimeoutError, OSError) as err:
                 log(f"review batch {index + 1} attempt {attempt + 1} failed: {err}")
+                if is_quota_exhausted(err):
+                    raise QuotaExhausted(str(err)) from None
                 time.sleep(retry_delay(err, attempt, backoff))
         return None
 
@@ -117,7 +121,13 @@ def label_reviews(
                 stopped = True
                 break
             wave = range(start, min(len(batches), start + width))
-            for index, labels in zip(wave, pool.map(fetch, wave), strict=True):
+            try:
+                results = list(pool.map(fetch, wave))
+            except QuotaExhausted as err:
+                log(f"stopping: 5-hour window full, resume after it resets ({err})")
+                stopped = True
+                break
+            for index, labels in zip(wave, results, strict=True):
                 if labels is None:
                     failures += 1
                     consecutive += 1
