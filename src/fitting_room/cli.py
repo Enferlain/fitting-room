@@ -127,6 +127,23 @@ def label_reviews_cmd(
     typer.echo(stats)
 
 
+@app.command()
+def triage(
+    per_big_repo: int = typer.Option(200, help="Episodes sampled from each large repo"),
+    parallel: int = typer.Option(2, help="Concurrent GLM calls (keep total <= 2)"),
+    mining: Path = typer.Option(Path("work/mining"), help="Mining output directory"),
+) -> None:
+    """Triage mined episodes as task material with GLM (task statement, work type, size,
+    grading, GPU, verdict); cached in triage.jsonl."""
+    from fitting_room.miner.triage import triage as run_triage
+
+    stats = run_triage(
+        mining / "candidates.jsonl", mining / "triage.jsonl",
+        per_big_repo=per_big_repo, parallel=parallel,
+    )  # fmt: skip
+    typer.echo(stats)
+
+
 calibrate_app = typer.Typer(help="Blind human check of GLM follow-up labels.")
 app.add_typer(calibrate_app, name="calibrate")
 

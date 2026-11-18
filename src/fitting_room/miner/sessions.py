@@ -291,14 +291,24 @@ def read_hermes(db_path: Path) -> Iterator[Session]:
 DEFAULT_SOURCES = {
     "codex": Path("~/.codex/sessions"),
     "claude": Path("~/.claude/projects"),
+    # Copy of Claude transcripts kept outside Claude Code, whose cleanup deletes old ones.
+    "claude-archive": Path("~/.local/share/claude-transcript-archive/projects"),
     "hermes": Path("~/.hermes/state.db"),
     "omp": Path("~/.omp/agent/sessions"),
 }
 
 
 def iter_sessions(sources: dict[str, Path] | None = None) -> Iterator[Session]:
-    """Yield sessions from every configured source that exists."""
-    for name, base in (sources or DEFAULT_SOURCES).items():
+    """Yield sessions from every configured source that exists (each session once)."""
+    seen: set[tuple[str, str]] = set()
+    for s in _iter_all(sources or DEFAULT_SOURCES):
+        if (s.source, s.session_id) not in seen:
+            seen.add((s.source, s.session_id))
+            yield s
+
+
+def _iter_all(sources: dict[str, Path]) -> Iterator[Session]:
+    for name, base in sources.items():
         base = base.expanduser()
         if not base.exists():
             continue
@@ -306,7 +316,7 @@ def iter_sessions(sources: dict[str, Path] | None = None) -> Iterator[Session]:
             for f in sorted(base.rglob("*.jsonl")):
                 if s := read_codex(f):
                     yield s
-        elif name == "claude":
+        elif name.startswith("claude"):
             for f in sorted(base.glob("*/*.jsonl")):  # top level only: skips subagents/
                 if s := read_claude(f):
                     yield s

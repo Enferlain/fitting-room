@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import re
 import subprocess
+from collections import Counter
 from dataclasses import asdict, dataclass, field
 from functools import cache
 from pathlib import Path
@@ -125,6 +126,23 @@ def repo_root_of(cwd: str | None) -> str | None:
     if out.returncode != 0:
         return None
     return out.stdout.strip() or None
+
+
+def edit_repo(ep: Episode) -> str | None:
+    """Name of the repo most edits landed in, when that is not the working directory's
+    repo (a session started in one repo but working on another); else None."""
+    outside = [f for f in ep.files_edited if f.startswith("/")]
+    if not outside or len(outside) * 2 <= len(ep.files_edited):
+        return None
+    names = Counter()
+    for f in outside:
+        d = Path(f).parent
+        while not d.is_dir() and d != d.parent:
+            d = d.parent
+        root = repo_root_of(str(d))
+        names[Path(root).name if root else str(Path(f).parent)] += 1
+    name = names.most_common(1)[0][0]
+    return None if name == ep.repo else name
 
 
 def infer_commit(repo_root: str | None, branch: str | None, when: str | None) -> str | None:

@@ -368,3 +368,20 @@ def test_followup_records_reply_and_next_tool_calls(repo):
     assert fu.prev_assistant == "I added dropout to lora.py."
     assert fu.next_assistant == "Checked: the schema needs a new field."
     assert fu.next_tools == ["Read: library/config/schema.py", "Edit: library/config/schema.py"]
+
+
+def test_episode_attributed_to_repo_its_edits_landed_in(tmp_path):
+    import subprocess
+
+    from fitting_room.miner.episodes import Episode, edit_repo
+
+    other = tmp_path / "codex-observability"
+    (other / "src").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(other)], check=True)
+    ep = Episode(source="codex", session_id="s", session_path="p", index=0, repo="data-processing",
+                 repo_root="/x/data-processing", cwd="/x/data-processing", branch=None, start=None,
+                 request="r", request_ref="L1")  # fmt: skip
+    ep.files_edited = [str(other / "src" / "a.py"), str(other / "src" / "b.py"), "README.md"]
+    assert edit_repo(ep) == "codex-observability"
+    ep.files_edited = [str(other / "src" / "a.py"), "README.md", "src/x.py"]
+    assert edit_repo(ep) is None  # most edits stayed in the working repo

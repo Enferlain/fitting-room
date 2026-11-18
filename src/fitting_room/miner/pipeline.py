@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 
-from fitting_room.miner.episodes import Episode, split_episodes
+from fitting_room.miner.episodes import Episode, edit_repo, split_episodes
 from fitting_room.miner.output import summarize, write_outputs
 from fitting_room.miner.sessions import DEFAULT_SOURCES, iter_sessions
 
@@ -103,10 +103,17 @@ def mine(
             skipped["no_human_request"] += 1
             continue
         eps = split_episodes(session)
-        if repos and (not eps or eps[0].repo not in repos):
+        for ep in eps:
+            if moved := edit_repo(ep):
+                # Started in one repo, worked in another: the recorded commit is wrong.
+                ep.repo, ep.commit, ep.commit_inferred = moved, None, False
+        kept = [ep for ep in eps if not repos or ep.repo in repos]
+        if not kept:
             skipped["other_repo"] += 1
             continue
-        episodes.extend(eps)
+        if len(kept) < len(eps):
+            skipped["other_repo_episodes"] += len(eps) - len(kept)
+        episodes.extend(kept)
     stats = summarize(seen, skipped, episodes)
     stats["follow_ups_labelled"] = apply_labels(episodes, out_dir / LABELS_FILE)
     stats["review_bugs_attached"] = apply_review_bugs(episodes, out_dir)
