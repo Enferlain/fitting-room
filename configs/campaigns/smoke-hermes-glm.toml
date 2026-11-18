@@ -1,0 +1,6 @@
+# Single-pair check for Hermes + GLM 5.3 Flash on the hello spike.
+runs = ["hermes-glm53flash-medium"]
+repeats = 1
+
+[tasks]
+include = ["spikes/hello"]

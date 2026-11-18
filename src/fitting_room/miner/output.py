@@ -117,6 +117,12 @@ def _bugs_cell(ep: Episode) -> str:
     return f"{len(fixed)} fixed, {len(unfixed)} unfixed: {_one_line(first, 70)}"
 
 
+def _corrections_cell(ep: Episode) -> str:
+    kinds = sorted({f.label_kind for f in ep.corrections if f.label_kind})
+    n = len(ep.corrections)
+    return f"{n} ({', '.join(kinds)})" if kinds else str(n)
+
+
 def _md_cell(text: str) -> str:
     return text.replace("|", "\\|")
 
@@ -152,7 +158,7 @@ def render_markdown(episodes: list[Episode], stats: dict, top: int | None = TOP_
                 f"| {review_score(ep)} | `{ep.episode_id}` {ep.request_ref} | "
                 f"{(ep.start or '')[:16]} | {commit} | "
                 f"{ep.suggested_track} | {len(ep.files_edited)} | {ep.test_runs} | "
-                f"{len(ep.corrections)} | {_md_cell(_bugs_cell(ep))} | "
+                f"{_corrections_cell(ep)} | {_md_cell(_bugs_cell(ep))} | "
                 f"{_md_cell(_one_line(ep.request))} |"
             )
     lines += ["", "`*` = commit inferred from the repo's history at the episode's start time.", ""]

@@ -76,6 +76,7 @@ def apply_labels(episodes: list[Episode], labels_path: Path) -> int:
                     rec = cache.get(legacy_key(old, ep.episode_id, fu.ref, fu.text))
             if rec:
                 fu.label, fu.label_reason = rec["label"], rec.get("reason")
+                fu.label_kind = rec.get("kind") or None
                 applied += 1
     return applied
 

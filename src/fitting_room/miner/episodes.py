@@ -66,6 +66,7 @@ class FollowUp:
     next_tools: list[str] = field(default_factory=list)  # agent's next tool calls (summaries)
     label: str | None = None  # model_error | misunderstanding | scope_change | question | ...
     label_reason: str | None = None
+    label_kind: str | None = None  # shortfall kind (wrong, missed, sycophantic, ...)
 
 
 @dataclass
