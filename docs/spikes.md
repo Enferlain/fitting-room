@@ -87,4 +87,4 @@ Notes:
 - Six minutes of install per trial is still slow. If campaigns get long, bake Hermes into a cached image layer.
 - Hermes detects WSL from the kernel and tells the model the Windows drives are under `/mnt/c`. They aren't mounted in the sandbox; the model may waste a call looking. Same kernel string for every harness, so not a fairness issue, but it is noise.
 - The bundled skill list (58 skills) is in Hermes's system prompt by default. That is stock Hermes; toolkits (task 4.6) decide what else is added.
-- GLM through Hermes is not smoke-tested yet (z.ai 5-hour window was full).
+- GLM through Hermes passed the hello task on 2026-11-18 (see docs/harnesses.md).

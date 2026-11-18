@@ -31,6 +31,7 @@ Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude m
 | Harness | Command | Result |
 |---|---|---|
 | Oh My Pi 18.12.6 | `fr run smoke-omp` (`omp-glm53flash-medium`) | reward 1, no exception; ATIF trajectory with tool calls; omp reports z.ai-priced cost ($0.0013). For Flash it chose z.ai's OpenAI-compatible API (2026-11-17) |
+| Hermes 2026.9.24 (`f97608f1`) | `fr run smoke-hermes-glm` (`hermes-glm53flash-medium`) | reward 1; native `zai` provider on the coding endpoint; usage 10,141 in / 10,048 cached / 51 out. Hermes sends `thinking: enabled` plus `reasoning_effort` for GLM 5.3; Flash at medium returned 0 reasoning tokens on this trivial task, and the same request sent directly does too, so that is the model's adaptive thinking, not the harness (2026-11-18) |
 | Claude Code 2.1.263 | `ANTHROPIC_AUTH_TOKEN=av-managed-key harbor run -p spikes/hello -a claude-code -m anthropic/glm-5.3-flash --ak version=2.1.263 --ak max_turns=10 --base-url https://api.z.ai/api/anthropic --api-key-name ANTHROPIC_AUTH_TOKEN --extra-docker-compose work/overlays/agent-vault-ca.compose.yaml` | reward 1, no exception (2026-11-17) |
 
 **Cost caveat:** Claude Code reported `cost_usd: 0.171` for this run, which is its estimate at Anthropic prices, not GLM's. Scoring must compute GLM cost from `configs/prices.toml` and ignore harness-reported cost for non-native providers.

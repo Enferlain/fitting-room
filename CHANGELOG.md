@@ -8,6 +8,8 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 - Pair `codex` × `local` using Harbor's built-in Codex agent against llama-server's Responses API. `fr run` never passes the variables that would make Harbor upload the host Codex login.
 
 ### Verified
+- Hermes + GLM 5.3 Flash passed the hello task through `fr run smoke-hermes-glm`. GLM 5.3 Flash may skip reasoning on trivial steps even with thinking on (direct API check agrees).
+- Follow-up relabel with v3 finished: 3,354 of 3,360 follow-ups labelled; 655 agent shortfalls over 465 episodes. Candidate ranking rebuilt and now shows shortfall kinds.
 - Codex 0.163.0 + local Qwen3.5-9B passed the hello task through `fr run smoke-codex`, with ATIF and token usage.
 
 ## 2026-11-17
