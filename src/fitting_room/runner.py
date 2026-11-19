@@ -19,6 +19,7 @@ from pathlib import Path
 from fitting_room.config import Campaign, ConfigError, ConfigRoot, RunConfig
 from fitting_room.provenance import write_sidecars
 from fitting_room.providers import PROVIDERS, stage_certs, write_ca_overlay
+from fitting_room.toolkits import Toolkit, load_toolkit, stage_tasks, unsupported
 
 JOB_CONFIG_NAME = "job-config.json"
 # Variables that make Harbor upload a host login (e.g. ~/.codex/auth.json) into the
@@ -192,13 +193,20 @@ def build_job_config(
     jobs_dir: Path,
     agent: AgentSpec,
     extra_compose: list[Path] | None = None,
+    toolkit: Toolkit | None = None,
 ) -> dict:
+    job_agent = agent.to_job_agent()
+    if toolkit is not None and agent.name not in ("oracle", "nop"):
+        if servers := toolkit.mcp_servers():
+            job_agent["mcp_servers"] = servers
+        if skills := toolkit.skill_dirs():
+            job_agent["skills"] = skills
     cfg = {
         "job_name": run.name,
         "jobs_dir": str(jobs_dir),
         "n_attempts": repeats,
         "quiet": True,
-        "agents": [agent.to_job_agent()],
+        "agents": [job_agent],
         "tasks": [{"path": str(p)} for p in task_dirs],
     }
     if extra_compose:
@@ -242,11 +250,22 @@ def run_campaign(
     load_campaign; agent mapping is checked for *all* runs before the first job starts."""
     specs: dict[str, AgentSpec] = {}
     problems: list[str] = []
+    toolkits: dict[str, Toolkit] = {}
     for run in campaign.runs:
         try:
             specs[run.name] = agent_spec_for(run)
         except ConfigError as err:
             problems.extend(err.problems)
+        try:
+            toolkits[run.name] = load_toolkit(root.toolkits, run.toolkit)
+        except ValueError as err:
+            problems.append(f"run '{run.name}': {err}")
+            continue
+        if bad := unsupported(run.harness, toolkits[run.name]):
+            problems.append(
+                f"run '{run.name}': harness {run.harness} cannot use toolkit "
+                f"'{run.toolkit}' items: {', '.join(bad)}"
+            )
     if endpoint_check is None:
         from fitting_room.serving.launcher import endpoint_up as endpoint_check
     for run in campaign.runs:
@@ -261,28 +280,30 @@ def run_campaign(
     out_dir = campaign_output_dir(results_root, campaign.config.name, now)
     out_dir.mkdir(parents=True, exist_ok=False)
     results = []
+    work = work_dir or results_root.parent / "work"
     for run in campaign.runs:
-        job_cfg = build_job_config(
-            run,
-            [p.resolve() for p in campaign.task_dirs],
-            campaign.config.repeats,
-            out_dir.resolve(),
-            specs[run.name],
+        toolkit = toolkits[run.name]
+        tasks = stage_tasks(
+            [p.resolve() for p in campaign.task_dirs], toolkit, (work / "staged").resolve()
         )
         job_dir = out_dir / run.name
         job_dir.mkdir()
         spec = specs[run.name]
+        overlays = []
         if spec.needs_agent_vault_ca:
-            certs = stage_certs(work_dir or results_root.parent / "work")
-            overlay = write_ca_overlay(certs, job_dir / "agent-vault-ca.compose.yaml")
-            job_cfg = build_job_config(
-                run,
-                [p.resolve() for p in campaign.task_dirs],
-                campaign.config.repeats,
-                out_dir.resolve(),
-                spec,
-                extra_compose=[overlay.resolve()],
+            certs = stage_certs(work)
+            overlays.append(
+                write_ca_overlay(certs, job_dir / "agent-vault-ca.compose.yaml").resolve()
             )
+        job_cfg = build_job_config(
+            run,
+            tasks,
+            campaign.config.repeats,
+            out_dir.resolve(),
+            spec,
+            extra_compose=overlays or None,
+            toolkit=toolkit,
+        )
         cfg_path = job_dir / JOB_CONFIG_NAME
         cfg_path.write_text(json.dumps(job_cfg, indent=2) + "\n")
         rc = invoke(cfg_path, spec.host_env)

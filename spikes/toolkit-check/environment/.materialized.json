@@ -1,0 +1,10 @@
+{
+ "repo": "hermes-agora",
+ "commit": "b140aefb03e7342c5119509a84c70a78fc8112f7",
+ "files": 142,
+ "stripped": [],
+ "excluded_patterns": [],
+ "excluded_files": 0,
+ "included_back": [],
+ "submodules_not_included": false
+}

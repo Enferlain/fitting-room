@@ -1,0 +1,39 @@
+# dev-stack: the tools the priority repos' instructions expect. Off unless a run sets
+# toolkit = "dev-stack" (user decision 2026-11-19: nothing enabled by default).
+name = "dev-stack"
+description = "bd, openspec and codebase-memory (MCP + skill) inside the sandbox"
+
+# Appended to each task's Dockerfile (fr run stages a hardlinked copy of the task).
+# The layer copies the tools in, initialises bd from the snapshot's issues and
+# pre-indexes the repo for codebase-memory (images/toolkits/dev-stack/setup.sh).
+dockerfile_append = """
+COPY --from=fr-toolkit/dev-stack:1 /opt/fr-toolkit /opt/fr-toolkit
+RUN /opt/fr-toolkit/setup.sh
+"""
+
+# Optional instruction text added through the arm mechanism when announce = true.
+announce = false
+
+[[items]]
+name = "bd"
+kind = "cli"
+usage = ["bd "]
+
+[[items]]
+name = "openspec"
+kind = "cli"
+usage = ["openspec "]
+
+[[items]]
+name = "codebase-memory"
+kind = "mcp"
+transport = "stdio"
+command = "codebase-memory-mcp"
+args = []
+usage = ["codebase-memory"]   # MCP server name in tool calls
+
+[[items]]
+name = "codebase-memory-skill"
+kind = "skill"
+path = "skills/codebase-memory"   # relative to this toolkit directory
+usage = ["codebase-memory"]

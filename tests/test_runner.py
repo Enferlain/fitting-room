@@ -256,3 +256,75 @@ def test_codex_local_mapping_and_no_host_login(monkeypatch, tmp_path):
     monkeypatch.setattr(runner.subprocess, "call", lambda cmd, env: seen.update(env) or 0)
     runner.invoke_harbor(tmp_path / "job.json", {"OPENAI_API_KEY": "no-key-required"})
     assert "CODEX_FORCE_AUTH_JSON" not in seen and seen["OPENAI_API_KEY"] == "no-key-required"
+
+
+def _dev_stack(cfg_root: ConfigRoot) -> None:
+    tk = cfg_root.toolkits / "dev-stack"
+    (tk / "skills" / "cbm").mkdir(parents=True)
+    (tk / "skills" / "cbm" / "SKILL.md").write_text("---\nname: cbm\n---\n")
+    (tk / "toolkit.toml").write_text(
+        'name = "dev-stack"\n'
+        'dockerfile_append = "RUN /opt/fr-toolkit/setup.sh"\n'
+        '[[items]]\nname = "bd"\nkind = "cli"\n'
+        '[[items]]\nname = "codebase-memory"\nkind = "mcp"\ncommand = "codebase-memory-mcp"\n'
+        '[[items]]\nname = "cbm-skill"\nkind = "skill"\npath = "skills/cbm"\n'
+    )
+
+
+def _local_run(harness: str, version: str, toolkit: str) -> RunConfig:
+    return RunConfig(name=f"{harness}-{toolkit}", harness=harness, harness_version=version,
+                     model="local/qwen3.5-9b", effort="medium", toolkit=toolkit,
+                     serving_profile="qwen35-9b-3080")  # fmt: skip
+
+
+def test_dev_stack_stages_tasks_and_registers_mcp_and_skills(tmp_path):
+    root = ROOT(tmp_path)
+    _dev_stack(root)
+    camp = make_campaign(tmp_path, [_local_run("codex", "0.163.0", "dev-stack")], repeats=1)
+    for d in camp.task_dirs:
+        (d / "environment").mkdir()
+        (d / "environment" / "Dockerfile").write_text("FROM fr-repo/x:latest\n")
+    calls: list[dict] = []
+    run_campaign(camp, tmp_path / "results", root, invoke=fake_harbor(calls), now=NOW,
+                 work_dir=tmp_path / "work", endpoint_check=lambda _: True)  # fmt: skip
+    agent = calls[0]["agents"][0]
+    assert agent["mcp_servers"][0]["command"] == "codebase-memory-mcp"
+    assert agent["skills"][0].endswith("skills/cbm")
+    staged = Path(calls[0]["tasks"][0]["path"])
+    assert staged.is_relative_to(tmp_path / "work" / "staged" / "dev-stack")
+    assert (
+        staged.joinpath("environment/Dockerfile")
+        .read_text()
+        .endswith("RUN /opt/fr-toolkit/setup.sh\n")
+    )
+    # The original task is untouched; other files are hardlinks, not copies.
+    original = camp.task_dirs[0]
+    assert original.joinpath("environment/Dockerfile").read_text() == "FROM fr-repo/x:latest\n"
+    assert (
+        staged.joinpath("task.toml").stat().st_ino == original.joinpath("task.toml").stat().st_ino
+    )
+
+
+def test_toolkit_none_adds_nothing(tmp_path):
+    camp = make_campaign(tmp_path, [_local_run("codex", "0.163.0", "none")], repeats=1)
+    calls: list[dict] = []
+    run_campaign(camp, tmp_path / "results", ROOT(tmp_path), invoke=fake_harbor(calls), now=NOW,
+                 work_dir=tmp_path / "work", endpoint_check=lambda _: True)  # fmt: skip
+    agent = calls[0]["agents"][0]
+    assert "mcp_servers" not in agent and "skills" not in agent
+    assert [Path(t["path"]) for t in calls[0]["tasks"]] == [d.resolve() for d in camp.task_dirs]
+
+
+def test_harness_without_item_support_refused(tmp_path):
+    root = ROOT(tmp_path)
+    _dev_stack(root)
+    with (root.toolkits / "dev-stack" / "toolkit.toml").open("a") as fh:
+        fh.write('[[items]]\nname = "bd-prime"\nkind = "hook"\n')
+    run = RunConfig(name="omp-dev", harness="omp", harness_version="18.12.6",
+                    model="zai/glm-5.3-flash", effort="medium", toolkit="dev-stack")  # fmt: skip
+    calls: list[dict] = []
+    with pytest.raises(ConfigError) as err:
+        run_campaign(make_campaign(tmp_path, [run]), tmp_path / "results", root,
+                     invoke=fake_harbor(calls), now=NOW)  # fmt: skip
+    assert "bd-prime (hook)" in str(err.value.problems)
+    assert calls == []

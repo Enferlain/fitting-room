@@ -235,3 +235,4 @@ __marimo__/
 /jobs/
 .venv-wsl/
 tasks/**/environment/repo/
+spikes/**/environment/repo/
