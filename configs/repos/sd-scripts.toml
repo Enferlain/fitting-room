@@ -1,0 +1,8 @@
+# Snapshot settings for fr task materialize.
+# docs_design/models-strategy-trainer/_deprecated/ holds superseded design material and
+# generated evidence (1,256 of 3,012 tracked files at 38cdc295, mostly JSON). Excluded
+# at the user's request (2026-11-19) so it doesn't flood agents and their tools.
+# Tasks that need part of it bring it back with [metadata] snapshot_include.
+exclude = [
+    "docs_design/models-strategy-trainer/_deprecated/**",
+]
