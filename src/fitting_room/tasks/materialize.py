@@ -55,8 +55,9 @@ def repo_excludes(repo: str, configs: Path | None = None) -> list[str]:
     return list(tomllib.loads(path.read_text()).get("exclude", [])) if path.exists() else []
 
 
-def _matches(name: str, patterns: list[str]) -> bool:
-    return any(fnmatch(name, p) or fnmatch(name + "/", p) for p in patterns)
+def _matches(name: str, patterns: list[str], is_dir: bool = False) -> bool:
+    """Glob match on a repo-relative path; a directory also matches as "<dir>/"."""
+    return any(fnmatch(name, p) or (is_dir and fnmatch(name + "/", p)) for p in patterns)
 
 
 def task_source(task_dir: Path) -> tuple[str, str]:
@@ -122,7 +123,7 @@ def materialize(task_dir: Path, *, repo: str | None = None, commit: str | None =
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         members = []
         for m in tar.getmembers():
-            if _matches(m.name, excludes) and not _matches(m.name, includes):
+            if _matches(m.name, excludes, m.isdir()) and not _matches(m.name, includes, m.isdir()):
                 excluded += m.isfile()
                 continue
             if Path(m.name).name in STRIP_NAMES:

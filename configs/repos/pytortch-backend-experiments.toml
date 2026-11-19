@@ -1,9 +1,11 @@
 # Snapshot settings for fr task materialize.
-# Generated stage evidence (~17.7k of ~21k tracked files: JSON, PTX, reports). It makes
-# git, ripgrep and codebase-memory slow and noisy (codebase-memory has written hundreds
-# of GB trying to index it). Tasks that need specific files bring them back with
-# [metadata] snapshot_include in task.toml.
+# stage5/artifacts/<run>/ holds generated evidence from historic runs (16,291 of 21,448
+# tracked files at 0ad1b254: JSON, PTX, reports). It makes git, ripgrep and
+# codebase-memory slow and noisy (codebase-memory has written hundreds of GB trying to
+# index it). Kept: stage5/artifacts/*.json at the top level and every other stage's
+# artifacts, which the live tests use as fixtures (stage0/artifacts/cpp/kernel.ptx,
+# stage1/artifacts/pytorch.patch, stage5/artifacts/baseline-cubecl_baseline.json).
+# Tasks that need excluded files bring them back with [metadata] snapshot_include.
 exclude = [
-    "stage*/artifacts/**",
-    "fp_hardening/artifacts/**",
+    "stage5/artifacts/*/**",
 ]

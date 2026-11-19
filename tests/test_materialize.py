@@ -88,13 +88,15 @@ def test_repo_excludes_and_task_includes(tmp_path, monkeypatch):
     (r / "src").mkdir()
     git(r, "init", "-q")
     (r / "src" / "a.py").write_text("code")
-    (r / "stage5" / "artifacts" / "x.json").write_text("{}")
+    (r / "stage5" / "artifacts" / "run1").mkdir()
+    (r / "stage5" / "artifacts" / "run1" / "x.json").write_text("{}")
+    (r / "stage5" / "artifacts" / "top.json").write_text("{}")
     (r / "stage5" / "artifacts" / "keep" / "y.json").write_text("{}")
     git(r, "add", "-A")
     git(r, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "one")
     cfg = tmp_path / "cfg"
     cfg.mkdir()
-    (cfg / "demo.toml").write_text('exclude = ["stage*/artifacts/**"]\n')
+    (cfg / "demo.toml").write_text('exclude = ["stage*/artifacts/*/**"]\n')
     monkeypatch.setattr(mz, "REPO_CONFIGS", cfg)
     monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
     task = make_task(tmp_path, git(r, "rev-parse", "HEAD"))
@@ -103,6 +105,7 @@ def test_repo_excludes_and_task_includes(tmp_path, monkeypatch):
     m = materialize(task)
     dest = task / "environment" / "repo"
     assert (dest / "src" / "a.py").exists()
-    assert not (dest / "stage5" / "artifacts" / "x.json").exists()
+    assert not (dest / "stage5" / "artifacts" / "run1" / "x.json").exists()
+    assert (dest / "stage5" / "artifacts" / "top.json").exists()  # files directly under stay
     assert (dest / "stage5" / "artifacts" / "keep" / "y.json").exists()
     assert m.excluded == 1
