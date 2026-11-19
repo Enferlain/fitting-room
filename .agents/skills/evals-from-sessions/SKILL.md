@@ -58,6 +58,10 @@ this section disagree, this section wins.
   default agent. Pass the reasoning effort explicitly (the run config does).
 - **Verifier mode:** set `[verifier] environment_mode = "shared"` explicitly; Harbor
   0.26's `harbor task init` defaults new tasks to `separate`.
+- **Repo path:** the snapshot lives at `/work/<repo>` (not `/app`): codebase-memory
+  refuses to index a top-level directory, and the real name matches the user's sessions.
+  Tools are off by default; the `dev-stack` toolkit layer adds bd, openspec and
+  codebase-memory when a run enables it.
 - Task names: `fr/<repo>-<short-slug>`; tasks live in `tasks/<repo>/<slug>/`, validation
   evidence in `validation/<repo>/<slug>/`.
 

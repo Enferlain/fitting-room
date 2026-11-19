@@ -4,8 +4,9 @@
 ARG BASE=fr-base/cpu:1
 FROM ${BASE}
 ARG PYTHON
+ARG SYNC_ARGS="--all-extras --all-groups"
 # Task images inherit this: uv uses the same interpreter as the repo's own venv.
-ENV UV_PYTHON=${PYTHON}
+ENV UV_PYTHON=${PYTHON} FR_SYNC_ARGS=${SYNC_ARGS}
 COPY warm/ /opt/warm/
-RUN cd /opt/warm && uv sync --frozen --no-install-project --all-extras --all-groups \
+RUN cd /opt/warm && uv sync --frozen --no-install-project ${SYNC_ARGS} \
     && rm -rf /opt/warm/.venv

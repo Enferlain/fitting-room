@@ -27,3 +27,5 @@ Made on 2026-11-19 (task 7.2, design D12 plus user decisions of 2026-11-18):
   `episode_id`, `work_type`, `grading`, optional `gpu_vram_gb`; verifier timeout 300 s
   with `environment_mode = "shared"`; agent timeout 3600 s; network note.
 - `environment/Dockerfile` template: note to start from the repo's base image.
+- `environment/Dockerfile`, `instruction.md`, `solve.sh` templates: repo at `/work/REPO`
+  (codebase-memory refuses top-level roots), `FROM fr-repo/REPO:latest`, `fr-snapshot-init`.

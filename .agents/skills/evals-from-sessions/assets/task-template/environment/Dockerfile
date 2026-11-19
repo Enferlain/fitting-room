@@ -1,13 +1,10 @@
-# fitting-room: start FROM the repo's base image (task 7.4), e.g. fr-base/<repo>:<tag>,
-# which carries the toolchain, git, uv, bd and openspec.
-FROM python:3.12-slim
-# Pin the base image tag. Install every tool the agent and verifier need here;
-# do not pin exact apt versions (they disappear from mirrors).
-RUN apt-get update && apt-get install -y --no-install-recommends git \
-    && rm -rf /var/lib/apt/lists/*
-WORKDIR /app
+# fitting-room: start FROM the repo image (images/build.sh <repo>): toolchain, git, uv,
+# node. bd, openspec and codebase-memory come only with the dev-stack toolkit layer.
+FROM fr-repo/REPO:latest
+WORKDIR /work/REPO
 # private: repo/ is `git archive <parent-commit>`; shareable: a new starter repo.
-COPY repo/ /app/
-# One fresh commit: no history, tags, remotes, hooks or episode messages.
-RUN git init -q && git add -A \
-    && git -c user.name=task -c user.email=task@example.invalid commit -qm init
+COPY repo/ /work/REPO/
+# One fresh commit (no history, tags, remotes, hooks or episode messages). fitting-room:
+# fr-snapshot-init from the base image; append the repo's install step, e.g.
+# RUN fr-snapshot-init && uv sync --frozen
+RUN fr-snapshot-init

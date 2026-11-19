@@ -38,7 +38,7 @@ def same(a, b):
 
 def main():
     # Example: run the documented command on a hidden fixture.
-    # r = run([sys.executable, "/app/tool.py", "/tests/fixtures/case1.jsonl"])
+    # r = run([sys.executable, "/work/REPO/tool.py", "/tests/fixtures/case1.jsonl"])
     # check("case1 exit code", r.returncode == 0, r.stderr[-500:])
     # check("case1 result", same(json.loads(r.stdout), EXPECTED), r.stdout[-500:])
     check("replace this placeholder", False, "verifier not written")

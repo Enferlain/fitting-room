@@ -2,11 +2,11 @@
 # TITLE
 
 GOAL in one or two sentences: the required end state, not the fix. The repository is
-in `/app`.
+in `/work/REPO`.
 
 ## Inputs
 
-- `/app/...`: WHAT IT CONTAINS.
+- `/work/REPO/...`: WHAT IT CONTAINS.
 
 ## Required behavior
 

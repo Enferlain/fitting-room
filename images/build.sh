@@ -19,5 +19,6 @@ case "${KIND:-repo-python}" in
 esac
 docker build -t "fr-repo/$repo:$sha" -t "fr-repo/$repo:latest" \
     --build-arg PYTHON="$PYTHON" ${BASE:+--build-arg BASE="$BASE"} \
+    ${SYNC_ARGS+--build-arg SYNC_ARGS="$SYNC_ARGS"} \
     -f "$here/${KIND:-repo-python}/Dockerfile" "$ctx"
 echo "built fr-repo/$repo:$sha"
