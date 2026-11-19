@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
+from harbor.models.job.config import JobConfig
 
 from fitting_room.config import (
     Campaign,
@@ -11,6 +12,7 @@ from fitting_room.config import (
     ConfigRoot,
     RunConfig,
     TaskSelector,
+    load_campaign,
 )
 from fitting_room.provenance import SIDECAR_NAME
 from fitting_room.runner import JOB_CONFIG_NAME, run_campaign, trial_dirs
@@ -73,12 +75,35 @@ def test_one_job_per_run_config_with_repeats(tmp_path):
 
     assert [c["job_name"] for c in calls] == ["a", "b"]
     assert all(c["n_attempts"] == 3 for c in calls)
+    assert all("agent_timeout_multiplier" not in c for c in calls)
     assert calls[0]["agents"] == [{"name": "oracle"}]
     assert len(calls[0]["tasks"]) == 2
     # 2 configs x 2 tasks x 3 repeats
     assert sum(len(trial_dirs(j.job_dir)) for j in jobs) == 12
     # job config kept for provenance, under results/<campaign>/<stamp>/<run>/
     assert (tmp_path / "results/camp/20261117-030000/a" / JOB_CONFIG_NAME).is_file()
+
+
+def test_agent_timeout_multiplier_is_forwarded_to_harbor(tmp_path):
+    root = ROOT(tmp_path)
+    make_campaign(tmp_path, [RunConfig(name="a", harness="oracle")])
+    root.runs.mkdir()
+    (root.runs / "a.toml").write_text('harness = "oracle"\n')
+    root.campaigns.mkdir()
+    (root.campaigns / "camp.toml").write_text(
+        'runs = ["a"]\nagent_timeout_multiplier = 2.0\n[tasks]\ninclude = ["tasks/*"]\n'
+    )
+    camp = load_campaign("camp", root, tmp_path)
+    calls: list[dict] = []
+    run_campaign(camp, tmp_path / "results", root, invoke=fake_harbor(calls), now=NOW)
+    (cfg,) = calls
+    assert cfg["agent_timeout_multiplier"] == 2.0
+    del cfg["_host_env"]
+    job = JobConfig.model_validate(cfg)
+    assert job.agent_timeout_multiplier == 2.0
+    assert job.timeout_multiplier == 1.0
+    assert job.verifier_timeout_multiplier is None
+    assert job.agent_setup_timeout_multiplier is None
 
 
 def test_unmapped_harness_refused_before_anything_starts(tmp_path):

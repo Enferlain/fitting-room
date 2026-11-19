@@ -194,6 +194,8 @@ def build_job_config(
     agent: AgentSpec,
     extra_compose: list[Path] | None = None,
     toolkit: Toolkit | None = None,
+    *,
+    agent_timeout_multiplier: float | None = None,
 ) -> dict:
     job_agent = agent.to_job_agent()
     if toolkit is not None and agent.name not in ("oracle", "nop"):
@@ -211,6 +213,8 @@ def build_job_config(
     }
     if extra_compose:
         cfg["environment"] = {"extra_docker_compose": [str(p) for p in extra_compose]}
+    if agent_timeout_multiplier is not None:
+        cfg["agent_timeout_multiplier"] = agent_timeout_multiplier
     return cfg
 
 
@@ -303,6 +307,7 @@ def run_campaign(
             spec,
             extra_compose=overlays or None,
             toolkit=toolkit,
+            agent_timeout_multiplier=campaign.config.agent_timeout_multiplier,
         )
         cfg_path = job_dir / JOB_CONFIG_NAME
         cfg_path.write_text(json.dumps(job_cfg, indent=2) + "\n")

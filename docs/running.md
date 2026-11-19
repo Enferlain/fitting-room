@@ -69,6 +69,7 @@ uv run fr serve down qwen35-9b-3080
 ```toml
 runs = ["codex-medium", "claude-code-medium"]   # run configuration names
 repeats = 3                                     # trials per task per configuration (default 3)
+agent_timeout_multiplier = 2.0                  # optional: double the task's agent budget
 
 [tasks]
 include = ["tasks/sd-scripts/*", "tasks/hcom/*"]  # globs, relative to the repo root
@@ -82,6 +83,11 @@ task_gpu    = "GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"   # RTX 3080
 ```
 
 A directory counts as a task when it contains `task.toml`. A campaign whose selection matches no tasks is rejected.
+
+The optional `agent_timeout_multiplier` scales each task's `[agent] timeout_sec`.
+For a smoke task with a 600-second timeout, `2.0` allows 20 minutes for agent
+execution. The multiplier is saved in the generated `job-config.json`. Setup
+and verifier timeouts use their existing settings.
 
 ## Results layout
 

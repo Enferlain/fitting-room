@@ -118,8 +118,19 @@ def test_campaign_resolves_runs_tasks_and_default_repeats(repo):
     )
     camp = load_campaign("c", root(repo), repo)
     assert camp.config.repeats == 3
+    assert camp.config.agent_timeout_multiplier is None
     assert [r.name for r in camp.runs] == ["a"]
     assert [p.name for p in camp.task_dirs] == ["t1"]
+
+
+@pytest.mark.parametrize("value", ["0", "-1", "inf", "nan", "true", '"2"'])
+def test_campaign_rejects_invalid_agent_timeout_multiplier(repo, value):
+    write_run(repo, "a", GOOD)
+    (repo / "configs" / "campaigns" / "c.toml").write_text(
+        f'runs = ["a"]\nagent_timeout_multiplier = {value}\n[tasks]\ninclude = ["tasks/*/*"]\n'
+    )
+    with pytest.raises(ConfigError, match="agent_timeout_multiplier"):
+        load_campaign("c", root(repo), repo)
 
 
 def test_campaign_with_no_matching_tasks_rejected(repo):
