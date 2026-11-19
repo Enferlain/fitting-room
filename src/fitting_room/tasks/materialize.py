@@ -18,7 +18,7 @@ import subprocess
 import tarfile
 import tomllib
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 REPOS_DIR_ENV = "FR_REPOS_DIR"
 DEFAULT_REPOS_DIR = Path("~/Projects")
@@ -65,6 +65,20 @@ def _git(path: Path, *args: str, binary: bool = False) -> bytes | str:
     return out.stdout
 
 
+def _inside_repo(m: tarfile.TarInfo) -> bool:
+    """True if a link's target stays inside the archive root."""
+    link = PurePosixPath(m.linkname)
+    if link.is_absolute():
+        return False
+    base = PurePosixPath(m.name).parent if m.issym() else PurePosixPath()
+    depth = 0
+    for part in (*base.parts, *link.parts):
+        depth += -1 if part == ".." else (0 if part == "." else 1)
+        if depth < 0:
+            return False
+    return True
+
+
 def materialize(task_dir: Path, *, repo: str | None = None, commit: str | None = None) -> Materialized:
     """Replace ``<task>/environment/repo/`` with the repo at the task's start commit."""
     if repo is None or commit is None:
@@ -87,11 +101,9 @@ def materialize(task_dir: Path, *, repo: str | None = None, commit: str | None =
             if Path(m.name).name in STRIP_NAMES:
                 stripped.append(m.name)
                 continue
-            if m.issym() or m.islnk():
-                link = Path(m.linkname)
-                if link.is_absolute() or ".." in link.parts:
-                    stripped.append(m.name)  # links out of the repo would leak host paths
-                    continue
+            if (m.issym() or m.islnk()) and not _inside_repo(m):
+                stripped.append(m.name)  # links out of the repo would leak host paths
+                continue
             members.append(m)
             files += m.isfile()
         tar.extractall(dest, members=members, filter="data")

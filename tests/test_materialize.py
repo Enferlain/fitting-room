@@ -61,3 +61,20 @@ def test_missing_metadata_refused(tmp_path, repo, monkeypatch):
     (task / "task.toml").write_text('[task]\nname = "fr/demo-x"\n[metadata]\nrepo = "demo"\n')
     with pytest.raises(MaterializeError, match="start_commit"):
         materialize(task)
+
+
+def test_links_inside_repo_kept_outside_stripped(tmp_path, monkeypatch):
+    r = tmp_path / "repos" / "demo"
+    (r / "skills").mkdir(parents=True)
+    (r / "plugin" / "x").mkdir(parents=True)
+    git(r, "init", "-q")
+    (r / "skills" / "s.md").write_text("s")
+    (r / "plugin" / "x" / "skills").symlink_to("../../skills")
+    (r / "out").symlink_to("../../etc")
+    git(r, "add", "-A")
+    git(r, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "one")
+    monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
+    m = materialize(make_task(tmp_path, git(r, "rev-parse", "HEAD")))
+    dest = tmp_path / "task" / "environment" / "repo"
+    assert (dest / "plugin" / "x" / "skills").is_symlink()
+    assert m.stripped == ["out"]
