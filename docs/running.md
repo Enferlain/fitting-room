@@ -120,6 +120,12 @@ wrote in `environment/.materialized.json` (outside the image's `COPY repo/`). Th
 Dockerfile re-inits the snapshot as a single commit. Submodule contents are not included;
 the command warns when a repo has them.
 
+Per-repo excludes live in `configs/repos/<repo>.toml` (`exclude` = glob patterns on
+repo-relative paths). pytortch-backend-experiments drops its generated stage artifacts
+(17,789 of 21,448 files at `0ad1b254`), which flood git, ripgrep and codebase-memory. A
+task that needs some of them lists them under `[metadata] snapshot_include`; both are
+recorded in `environment/.materialized.json`.
+
 Checked 2026-11-19 on data-processing at `43ea94ad` (693 files): the upstream leak probe
 reported one commit, one ref, no remotes, tags, hooks or stashes, and no hits for strings
 from later commits.

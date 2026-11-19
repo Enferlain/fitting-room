@@ -15,6 +15,8 @@ if [ -f .beads/config.yaml ]; then
     ' .beads/config.yaml > .beads/config.yaml.tmp && mv .beads/config.yaml.tmp .beads/config.yaml
 fi
 git init -q
+# No automatic background gc: it races the explicit gc below on large snapshots.
+git config gc.auto 0
 git add -A
 git commit -qm init
 git reflog expire --expire=now --all

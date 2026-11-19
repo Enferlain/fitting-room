@@ -1,0 +1,13 @@
+#!/bin/sh
+# Task-image setup for pytortch-backend-experiments (WORKDIR = repo, after fr-snapshot-init):
+# stage0/.venv linking /opt/venv without Triton (as on the host), then the native build
+# reusing the pre-built target. All outputs are gitignored, so the tree stays clean.
+set -eu
+uv venv -q stage0/.venv --python 3.14t
+stage0/.venv/bin/python stage0/isolate_python.py "$(echo /opt/venv/lib/python3.14t/site-packages)"
+cp -a /opt/pt-warm/native-target cubecl_torch/native/target
+[ -d /opt/pt-warm/bridge-target ] && cp -a /opt/pt-warm/bridge-target cubecl_torch/native/bridge/target || true
+cubecl_torch/native/build.sh
+if git status --porcelain | grep -q .; then
+    echo "fr-pytortch-setup: setup changed the tree:" >&2; git status --porcelain >&2; exit 1
+fi

@@ -17,6 +17,11 @@ case "${KIND:-repo-python}" in
         git -C "$src" show "$sha:uv.lock" > "$ctx/warm/uv.lock" ;;
     *)  git -C "$src" archive "$sha" | tar -x -C "$ctx/warm" ;;
 esac
+# Shared helpers (images/common/) and the kind's own helper files go into the context.
+cp -a "$here/common/." "$ctx/"
+for f in "$here/${KIND:-repo-python}"/*; do
+    [ "$(basename "$f")" = Dockerfile ] || cp -a "$f" "$ctx/"
+done
 docker build -t "fr-repo/$repo:$sha" -t "fr-repo/$repo:latest" \
     --build-arg PYTHON="$PYTHON" ${BASE:+--build-arg BASE="$BASE"} \
     ${SYNC_ARGS+--build-arg SYNC_ARGS="$SYNC_ARGS"} \

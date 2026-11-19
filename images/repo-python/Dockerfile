@@ -15,3 +15,5 @@ RUN cd /opt/warm && uv sync --frozen --no-install-project ${SYNC_ARGS} \
 # ENV placed after the warm-up so the cached warm-up layer is reused.)
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv
 RUN cd /opt/warm && uv sync --frozen --no-install-project --offline ${SYNC_ARGS}
+# Last: shared helper scripts (cheap to rebuild).
+COPY fr-snapshot-init /usr/local/bin/fr-snapshot-init

@@ -31,5 +31,5 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
 RUN git config --system user.name agent && git config --system user.email agent@example.invalid \
     && git config --system init.defaultBranch main && git config --system safe.directory '*'
 
-# fr-snapshot-init: run by task Dockerfiles after COPY repo/ (one fresh commit).
-COPY fr-snapshot-init /usr/local/bin/fr-snapshot-init
+# fr-snapshot-init is installed by the repo images' last layer (images/common/), so
+# changing it does not invalidate the heavy layers above the base.

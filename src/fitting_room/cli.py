@@ -208,6 +208,8 @@ def task_materialize(
         typer.echo(f"error: {err}", err=True)
         raise typer.Exit(1) from None
     typer.echo(f"{m.repo}@{m.commit[:12]}: {m.files} files -> {m.dest}")
+    if m.excluded:
+        typer.echo(f"excluded by configs/repos/{m.repo}.toml: {m.excluded} files")
     if m.stripped:
         typer.echo(f"stripped: {', '.join(m.stripped)}")
     if m.submodules:

@@ -6,6 +6,10 @@ Dockerfile re-inits it as one fresh commit, so the image has no later history, r
 remotes or hooks. A small record of what was materialized sits next to it
 (`environment/.materialized.json`), outside the `COPY repo/` path so it never reaches
 the image.
+
+Per-repo excludes (generated evidence that floods tools) come from
+``configs/repos/<repo>.toml`` (``exclude`` = glob patterns on repo-relative paths); a
+task can bring paths back with ``[metadata] snapshot_include``.
 """
 
 from __future__ import annotations
@@ -17,6 +21,7 @@ import shutil
 import subprocess
 import tarfile
 import tomllib
+from fnmatch import fnmatch
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
@@ -39,6 +44,19 @@ class Materialized:
     stripped: list[str]
     submodules: bool
     dest: Path
+    excluded: int = 0
+
+
+REPO_CONFIGS = Path(__file__).resolve().parents[3] / "configs" / "repos"
+
+
+def repo_excludes(repo: str, configs: Path | None = None) -> list[str]:
+    path = (configs or REPO_CONFIGS) / f"{repo}.toml"
+    return list(tomllib.loads(path.read_text()).get("exclude", [])) if path.exists() else []
+
+
+def _matches(name: str, patterns: list[str]) -> bool:
+    return any(fnmatch(name, p) or fnmatch(name + "/", p) for p in patterns)
 
 
 def task_source(task_dir: Path) -> tuple[str, str]:
@@ -93,11 +111,20 @@ def materialize(task_dir: Path, *, repo: str | None = None, commit: str | None =
         shutil.rmtree(dest)  # always a generated, gitignored snapshot
     dest.mkdir(parents=True)
     archive = _git(src, "archive", "--format=tar", full, binary=True)
+    meta = {}
+    if (task_dir / "task.toml").exists():
+        meta = tomllib.loads((task_dir / "task.toml").read_text()).get("metadata", {})
+    excludes = repo_excludes(repo)
+    includes = list(meta.get("snapshot_include", []))
+    excluded = 0
     stripped: list[str] = []
     files = 0
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         members = []
         for m in tar.getmembers():
+            if _matches(m.name, excludes) and not _matches(m.name, includes):
+                excluded += m.isfile()
+                continue
             if Path(m.name).name in STRIP_NAMES:
                 stripped.append(m.name)
                 continue
@@ -109,6 +136,7 @@ def materialize(task_dir: Path, *, repo: str | None = None, commit: str | None =
         tar.extractall(dest, members=members, filter="data")
     submodules = (dest / ".gitmodules").exists()
     record = {"repo": repo, "commit": full, "files": files, "stripped": stripped,
-              "submodules_not_included": submodules}  # fmt: skip
+              "excluded_patterns": excludes, "excluded_files": excluded,
+              "included_back": includes, "submodules_not_included": submodules}  # fmt: skip
     (env / RECORD).write_text(json.dumps(record, indent=1) + "\n")
-    return Materialized(repo, full, files, stripped, submodules, dest)
+    return Materialized(repo, full, files, stripped, submodules, dest, excluded)

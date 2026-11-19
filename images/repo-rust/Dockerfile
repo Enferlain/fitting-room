@@ -12,3 +12,5 @@ RUN set -eu; \
         --default-toolchain "$channel" --component clippy,rustfmt; \
     cd /opt/warm && cargo fetch --locked && cargo test --workspace --locked --no-run; \
     rm -rf /opt/warm
+# Last: shared helper scripts (cheap to rebuild).
+COPY fr-snapshot-init /usr/local/bin/fr-snapshot-init

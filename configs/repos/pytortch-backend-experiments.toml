@@ -1,0 +1,9 @@
+# Snapshot settings for fr task materialize.
+# Generated stage evidence (~17.7k of ~21k tracked files: JSON, PTX, reports). It makes
+# git, ripgrep and codebase-memory slow and noisy (codebase-memory has written hundreds
+# of GB trying to index it). Tasks that need specific files bring them back with
+# [metadata] snapshot_include in task.toml.
+exclude = [
+    "stage*/artifacts/**",
+    "fp_hardening/artifacts/**",
+]
