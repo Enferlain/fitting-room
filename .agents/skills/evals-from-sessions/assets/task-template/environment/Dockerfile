@@ -1,3 +1,5 @@
+# fitting-room: start FROM the repo's base image (task 7.4), e.g. fr-base/<repo>:<tag>,
+# which carries the toolchain, git, uv, bd and openspec.
 FROM python:3.12-slim
 # Pin the base image tag. Install every tool the agent and verifier need here;
 # do not pin exact apt versions (they disappear from mirrors).

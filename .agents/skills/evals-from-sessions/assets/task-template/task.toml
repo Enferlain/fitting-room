@@ -1,7 +1,7 @@
-schema_version = "1.4"  # replace with the value from `harbor task init`
+schema_version = "1.4"  # Harbor 0.26.0
 
 [task]
-name = "personal/TASK-NAME"
+name = "fr/REPO-SLUG"
 version = "1.0.0"
 description = "ONE-LINE DESCRIPTION"
 
@@ -11,15 +11,21 @@ category = "CATEGORY"
 mode = "private"          # or "shareable"
 visibility = "private"    # private mode: always "private"; shareable: "public" if publishable
 difficulty = "routine"    # or "discovery" (must-be-discovered list not empty)
+repo = "REPO"
+episode_id = "EPISODE-ID"   # from work/mining/selected.json
+work_type = "WORK-TYPE"     # feature | refactor | bugfix | investigation | explain | design | docs | config_tooling | review
+grading = "test"            # test | answer | judge (judge: tests/rubric.md, scored by fr judge)
+# gpu_vram_gb = 8          # GPU tasks only; also set [environment] gpus = 1
 
 [verifier]
-timeout_sec = 120.0
+timeout_sec = 300.0
+environment_mode = "shared"  # explicit: Harbor 0.26 task init defaults to "separate"
 
 [agent]
-timeout_sec = 1200.0
+timeout_sec = 3600.0
 
 [environment]
-network_mode = "public"   # "allowlist" + allowed_hosts if derived from public code
+network_mode = "public"   # web is part of the suite; repos with a public upstream need the remote blocked
 build_timeout_sec = 600.0
 cpus = 2
 memory_mb = 2048

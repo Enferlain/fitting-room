@@ -16,6 +16,51 @@ Harbor layout, paths, network and commands: [references/harbor-contract.md](refe
 Starting files: [assets/task-template/](assets/task-template/). Leak probe:
 [assets/leak-probe.sh](assets/leak-probe.sh).
 
+## fitting-room overrides (local; these win over the rest of this file)
+
+This copy is vendored into fitting-room (see `UPSTREAM.md`). Where a rule below and
+this section disagree, this section wins.
+
+- **Candidates come from the miner, not from reading sessions by hand.** `fr mine`
+  writes `work/mining/candidates.jsonl`, `fr triage` adds a task statement, work type,
+  size, grading route and GPU need per episode, and the user's checkpoint 1 picks are in
+  `work/mining/selected.json` / `selected.md`. Steps 0 and 1 are done; start at step 2
+  for a selected episode. The episode's JSONL path and line refs are in its
+  `candidates.jsonl` record (`session_path`, `request_ref`, follow-up `ref`s). If the
+  transcript was deleted, use the copy under `~/.local/share/claude-transcript-archive/`.
+- **Private mode only.** Tasks and snapshots stay on this machine (`tasks/**/environment/repo/`
+  is gitignored). Build `environment/repo/` with `fr task materialize`, not by hand.
+- **Represent the user's real work, not only bug fixes.** Features, refactors,
+  investigation, explanation, design, docs and config work are all in scope. Size up to
+  a few hours of agent work is fine (upstream says about 1 hour); reject only what
+  cannot be replayed from the starting commit or cannot be graded at all.
+- **Three grading routes** (record as `[metadata] grading`):
+  - `test`: hidden checks in `tests/verify.py`, as upstream describes.
+  - `answer`: closed-set JSON answer, as upstream's investigative episodes.
+  - `judge`: design, explanation and open investigation where no closed set exists.
+    Write `tests/rubric.md` with 4–10 yes/no criteria, each tied to a requirement or
+    failure mode in `provenance.md` (user corrections are the best source). `verify.py`
+    still checks every hard constraint it can (files that must not change, required
+    output file exists) and writes the reward; the rubric is scored by `fr judge`
+    (task 8.2) and reported separately. Do not grade prose with keywords.
+- **Web access is part of the suite.** The agent phase may use the web when the task
+  needs it; say so in the instruction. The verifier stays offline and deterministic.
+  For repos with a public upstream (hcom), fetching the repo's own remote must be
+  blocked or flagged (beads issue on web access).
+- **Repo tools are present.** The per-repo base images provide the tools the repo's
+  instructions expect (git, uv, bd, openspec, toolchains). Do not strip `AGENTS.md`,
+  `.beads/` or `openspec/` from the snapshot unless they leak the answer; if they do,
+  remove only the leaking files and note it in `provenance.md`.
+- **GPU tasks are allowed.** Set `[metadata] gpu_vram_gb` and `[environment] gpus = 1`;
+  `fr run` pins the GPU. Keep VRAM within one card that is not serving a model.
+- **Models and commands.** Smoke runs use `fr run` with a GLM or local-model run
+  config (never GPT or Claude models). `harbor check` runs with omp + GLM, not its
+  default agent. Pass the reasoning effort explicitly (the run config does).
+- **Verifier mode:** set `[verifier] environment_mode = "shared"` explicitly; Harbor
+  0.26's `harbor task init` defaults new tasks to `separate`.
+- Task names: `fr/<repo>-<short-slug>`; tasks live in `tasks/<repo>/<slug>/`, validation
+  evidence in `validation/<repo>/<slug>/`.
+
 ## Modes
 
 - **private** (default): the task is a snapshot of the user's own repository at the
@@ -73,6 +118,9 @@ Copy the sessions into a working directory and work only on the copy. Usual loca
 | Codex CLI | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl` |
 | Pi | `~/.pi/agent/sessions/` |
 | Gemini CLI | `~/.gemini/tmp/<hash>/chats/` |
+| Oh My Pi | `~/.omp/agent/sessions/<project>/<session>.jsonl` |
+| Hermes | `~/.hermes/state.db` (SQLite; open read-only) |
+| Claude Code (archived) | `~/.local/share/claude-transcript-archive/projects/` |
 
 Some agents delete old sessions (Claude Code after 30 days by default,
 `cleanupPeriodDays`), so copy early.
