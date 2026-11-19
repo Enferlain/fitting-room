@@ -1,0 +1,24 @@
+#!/bin/sh
+# Turn the copied snapshot into a single fresh commit and bring up repo tools.
+# Usage (in a task Dockerfile, WORKDIR = repo): RUN fr-snapshot-init
+set -eu
+if [ -f .beads/config.yaml ]; then
+    # bd's sync remote would pull today's issue database (later than the snapshot).
+    sed -i '/^sync\.remote:/d' .beads/config.yaml
+fi
+git init -q
+git add -A
+git commit -qm init
+if [ -f .beads/issues.jsonl ]; then
+    prefix=$(jq -r 'select(.id) | .id' .beads/issues.jsonl | head -1 | sed 's/-[^-]*$//')
+    bd init --from-jsonl --non-interactive --skip-hooks --skip-agents --quiet \
+        ${prefix:+--prefix "$prefix"} >/dev/null
+    # bd init commits its ignore-file additions; fold them into the single init commit.
+    git add -A
+    root=$(git rev-list --max-parents=0 HEAD)
+    git reset -q --soft "$root"
+    git commit -q --amend -m init
+fi
+# No reflog or loose objects from the steps above.
+git reflog expire --expire=now --all
+git gc -q --prune=now
