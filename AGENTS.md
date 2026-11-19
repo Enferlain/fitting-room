@@ -1,5 +1,22 @@
 # Agent Instructions
 
+## Subagents
+
+- Use Medium reasoning agents of a lower or similar tier for reviewing sections.
+
+## Documentation
+
+- `CHANGELOG.md` should be updated with landed progress whenever it's handed off.
+
+<!-- codebase-memory-mcp:start -->
+## Codebase Memory
+
+This repository uses Codebase Memory for structural code exploration.
+Use the installed `codebase-memory` skill for architecture, symbol discovery,
+call/dependency tracing, impact analysis, and related structural queries.
+Prefer its graph workflow before broad grep/glob/file exploration.
+<!-- codebase-memory-mcp:end -->
+
 This project uses **bd** (beads) for issue tracking. Run `bd prime` for full workflow context.
 
 > **Architecture in one line:** Issues live in a local Dolt database
