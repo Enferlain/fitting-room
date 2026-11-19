@@ -4,7 +4,14 @@
 set -eu
 if [ -f .beads/config.yaml ]; then
     # bd's sync remote would pull today's issue database (later than the snapshot).
-    sed -i '/^sync\.remote:/d' .beads/config.yaml
+    # Both spellings: "sync.remote: x" and a "sync:" block with an indented "remote:".
+    awk '
+        /^sync\.remote:/ { next }
+        /^sync:[[:space:]]*$/ { insync = 1; print; next }
+        insync && /^[[:space:]]+remote:/ { next }
+        /^[^[:space:]]/ { insync = 0 }
+        { print }
+    ' .beads/config.yaml > .beads/config.yaml.tmp && mv .beads/config.yaml.tmp .beads/config.yaml
 fi
 git init -q
 git add -A
