@@ -4,7 +4,12 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 
 ## 2026-11-19
 
+### Changed
+- Repo images no longer carry the uv cache (it doubled every Python image: sd-scripts 29 → 12.3 GB, pytortch 39 → 19 GB) or `COPY warm/` layers; builds use a BuildKit cache mount and bind mounts. fitting-room images and build cache went from about 170 GB to 35 GB.
+
 ### Added
+- Campaign-level `agent_timeout_multiplier` for extending agent execution. The generated Harbor job config records the multiplier.
+- Interpreter-specific tags for historical Python images built with `FR_IMAGE_PYTHON`.
 - Vendored `evals-from-sessions` 1.0.4 (upstream `4e85a197`, MIT) into `.agents/skills/evals-from-sessions/` with a `.claude/skills` symlink; unmodified copy committed first and checked against upstream by SHA-256. Local overrides (candidates from `fr triage`, three grading routes including judge-graded tasks, web access, repo tools, GPU tasks, GLM/local smoke runs) are listed in its `UPSTREAM.md`.
 - `fr task materialize <task>`: writes `environment/repo/` as `git archive` of the task's repo at `start_commit`, without `.env`-style files or outward symlinks.
 

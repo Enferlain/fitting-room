@@ -5,8 +5,9 @@ ARG BASE=fr-base/cpu:1
 FROM ${BASE}
 ENV RUSTUP_HOME=/opt/rustup CARGO_HOME=/opt/cargo CARGO_TARGET_DIR=/opt/cargo-target \
     PATH=/opt/cargo/bin:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin
-COPY warm/ /opt/warm/
-RUN set -eu; \
+# warm/ is bind-mounted (and copied to a scratch dir), so it is not left in a layer.
+RUN --mount=type=bind,source=warm,target=/opt/warm-src \
+    set -eu; cp -a /opt/warm-src /opt/warm; \
     channel=$(sed -n 's/^channel *= *"\(.*\)"/\1/p' /opt/warm/rust-toolchain.toml); \
     curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
         --default-toolchain "$channel" --component clippy,rustfmt; \

@@ -14,8 +14,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 \
     && curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal \
         --default-toolchain "${RUST_VERSION}" --component clippy,rustfmt
 # Build a recent commit at the path tasks use, so a task's build reuses unchanged crates.
-COPY warm/ /work/pytortch-backend-experiments/
-RUN set -eu; cd /work/pytortch-backend-experiments; \
+# warm/ is bind-mounted and copied into place, so the 2 GB tree is not left in a layer.
+RUN --mount=type=bind,source=warm,target=/opt/warm-src \
+    set -eu; cp -a /opt/warm-src /work/pytortch-backend-experiments; \
+    cd /work/pytortch-backend-experiments; \
     git init -q && git add -A && git commit -qm warm; \
     cubecl_torch/native/build.sh; \
     mkdir -p /opt/pt-warm; \
