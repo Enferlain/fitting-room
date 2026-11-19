@@ -10,3 +10,8 @@ ENV UV_PYTHON=${PYTHON} FR_SYNC_ARGS=${SYNC_ARGS}
 COPY warm/ /opt/warm/
 RUN cd /opt/warm && uv sync --frozen --no-install-project ${SYNC_ARGS} \
     && rm -rf /opt/warm/.venv
+# Shared venv, built once: task images sync into it and add only what differs at their
+# commit, instead of copying every dependency into a per-task .venv. (Separate step and
+# ENV placed after the warm-up so the cached warm-up layer is reused.)
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv VIRTUAL_ENV=/opt/venv
+RUN cd /opt/warm && uv sync --frozen --no-install-project --offline ${SYNC_ARGS}

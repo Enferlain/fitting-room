@@ -10,7 +10,11 @@ Task images build in three layers:
    dependency caches warmed from a recent commit. Settings per repo in
    `images/repos/<repo>.env` (`PYTHON`, `KIND`, optional `BASE`).
    - `repo-python`: `UV_PYTHON` pinned to the interpreter the repo's own venv uses; uv
-     cache filled from `pyproject.toml` + `uv.lock`.
+     cache filled from `pyproject.toml` + `uv.lock`, and a shared venv at `/opt/venv`
+     (`UV_PROJECT_ENVIRONMENT`), so a task image's `uv sync --frozen $FR_SYNC_ARGS` adds
+     only what differs at its commit (data-processing: 8 MB, sd-scripts: 14 MB).
+     `SYNC_ARGS` per repo (sd-scripts: `--extra onnx-gpu --all-groups`, its onnx extras
+     conflict).
    - `repo-rust`: toolchain from `rust-toolchain.toml`; registry fetched and test
      binaries pre-built into `CARGO_TARGET_DIR=/opt/cargo-target`.
 3. Task image (`tasks/<repo>/<slug>/environment/Dockerfile`), repo at `/work/<repo>`
@@ -53,5 +57,5 @@ returns whole 2 MB blocks).
 | hermes-agora | `b140aefb03` | full pytest suite passes |
 | hcom | `e215adc1c0` | `cargo test --workspace`: all pass except `db::tests::test_open_raw_rejects_temp_symlink_to_non_temp_path` (passes on the host; depends on the host's temp-dir layout). Exclude it in verifiers. |
 | data-processing + dev-stack | `f7585cbc24` | one clean commit; bd lists the snapshot's issues; openspec runs; codebase-memory index ready (12,610 nodes) |
-| sd-scripts | | not built yet (opencv-python has no 3.14t wheel; compiles from source) |
+| sd-scripts | `38cdc295ee` | free-threaded 3.14t; image 29 GB (uv cache + shared venv; opencv-python compiled once, as on the host). Unit suite with the 3080 pinned (`--gpus all -e CUDA_VISIBLE_DEVICES=<3080 UUID>`): 2,577 passed vs 2,569 on the host checkout; the failures are the host's own (stale tests mid-rework, e.g. `library.vendor.lycoris` imports) except `test_bookkeeping_and_peak_memory_stay_flat_as_a_run_grows_tenfold` (memory-growth check, sensitive to `-n 8`). Without a GPU, strategy tests error with "Found no NVIDIA driver". |
 | pytortch-backend-experiments | | CUDA image, not built yet |
