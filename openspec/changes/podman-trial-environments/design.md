@@ -1,0 +1,140 @@
+# Design
+
+## Context
+
+`benchmark-foundation` built one Docker image per repo (toolchain plus a venv warmed from a recent commit), and one more per task (`FROM` the repo image, `COPY` the snapshot, `RUN fr-snapshot-init`). It works, but cost and time grow with every repo, interpreter and rebuild, and Docker Desktop's disk is on C (see proposal). This change keeps Harbor (D1) and everything above the environment layer:
+- run configs and campaigns;
+- adapters;
+- ATIF trajectories;
+- verifiers and scoring.
+
+It replaces how a trial's environment is assembled.
+
+**Principle:** anything heavy exists once per machine or per repo and is mounted read-only. A task contributes only its snapshot. A trial contributes only its writes, which are discarded, plus its logs. Running N tasks in sequence costs the disk of one.
+
+## Verified on this host (2026-11-19, Podman 5.x from `nix shell nixpkgs#podman`)
+
+| Check | Result | How |
+|---|---|---|
+| Rootless Podman | works (`rootless=true`, netavark + pasta) | `podman run --rm alpine id` |
+| Storage location | `~/.local/share/containers/storage`, overlay driver, on the NixOS disk at `D:\WSL\NixOS` | `podman info`; `HKCU\...\Lxss` BasePath |
+| GPU | 3080 and 3090 visible. With `CUDA_VISIBLE_DEVICES=GPU-510ddc27-…`, torch sees 1 device (the 3080) and ran a 4096² matmul in 3.8 s including startup | `--device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib` |
+| CDI | **does not work as generated**: `nvidia-ctk cdi generate --mode=wsl` writes `/usr/bin/nvidia-cdi-hook`, which doesn't exist on NixOS. Use the plain bind above instead (or regenerate with `--nvidia-cdi-hook-path`). | |
+| Host env mounted read-only into a stock image | the host's `sd-scripts/.venv-wsl` plus `~/.local/share/uv/python`, bound at the **same paths** into `debian:trixie-slim`, imported torch and ran CUDA | `-v $P:$P:ro -v $V:$V:ro` |
+| Copy-on-write mount `:O` | the container changed and added files under the mount; the host directory was unchanged afterwards | `-v src:/work/repo:O` |
+| Agent Vault | `api.z.ai` resolves to the FakeIP (198.18.0.4) inside containers. `GET /api/coding/paas/v4/models` with the placeholder key returned 200, TLS verified against `work/certs/ca-bundle.crt` | curl image |
+| Host services (llama-swap on 127.0.0.1) | **not** reachable through `host.containers.internal` by default. Reachable with `--network pasta:--map-host-loopback=169.254.1.2` (`host.containers.internal` resolves to 169.254.1.2). WSL is in mirrored networking mode, so Windows' 127.0.0.1 is WSL's. | python http.server on 127.0.0.1:18099 |
+
+**Not yet verified, so the spike (tasks 2.x) checks these:**
+- `:O` and the extra mounts through Harbor's compose path (podman-compose versus `podman compose` → docker-compose over the Podman socket);
+- Harbor's egress-control sidecar under Podman (Harbor ships Podman support for it);
+- `uv run` against a read-only env;
+- harness installs from a mounted store.
+
+## Decisions
+
+### P1. Rootless Podman in WSL, through a Harbor environment subclass
+`src/fitting_room/environments/podman.py`: `FrPodmanEnvironment(PodmanEnvironment)`, loaded with the job config's `environment.import_path`. Harbor's Podman environment is its Docker environment with another CLI. The subclass:
+- declares `gpus=True` in `capabilities` and, for a GPU task, adds the `/dev/dxg` device, the read-only `/usr/lib/wsl` bind, `LD_LIBRARY_PATH` and `CUDA_VISIBLE_DEVICES` (Harbor only wires GPUs for Docker);
+- computes the per-task mounts (P3–P6) from the task's `task.toml` `[metadata]` and the run's toolkit. A job covers many tasks, so mounts cannot be job-level;
+- sets pasta's `--map-host-loopback` (per container, or once in `containers.conf` `[network] pasta_options`) so `host.containers.internal:18080` reaches llama-swap;
+- keeps the run-level Agent Vault CA overlay unchanged (`work/overlays/agent-vault-ca.compose.yaml`).
+
+*Alternative considered:* a bubblewrap environment written from scratch (no images at all). Rejected for now. It works on this host (bwrap and unprivileged overlayfs are available), but it means rewriting what Harbor's Docker/Podman environment already does (exec, upload/download, egress sidecar, compose overlays). Podman gives the same economics with far less new code.
+
+### P2. One base image, no per-task builds
+- **The base** is `fr-base/cpu:1` (`images/base-cpu/Dockerfile`, unchanged: Debian trixie, git, rg, jq, build tools, uv, Node), built once with `podman build`. About 1 GB, shared by every trial.
+- **Rust** (hcom, pytortch's native crates) gets one extra image, `fr-base/rust:<toolchain>`, if the toolchain can't be mounted. NixOS-built rustup toolchains don't run on Debian, so the toolchain lives in that image or in the store, installed from inside a container.
+- **Tasks** set `[environment] docker_image = "fr-base/cpu:1"`, and Harbor uses `docker-compose-prebuilt.yaml` with no build. `environment/Dockerfile` is dropped from the task template.
+
+### P3. Snapshot prepared on the host, mounted copy-on-write
+`fr task materialize` already writes `environment/repo/` (`git archive`, excludes, stripping). It additionally runs the `fr-snapshot-init` steps on the host:
+1. drop beads sync remotes;
+2. `git init`, `gc.auto 0`;
+3. one `init` commit;
+4. expire the reflog, `gc`.
+
+The snapshot then holds one commit, no remotes, no hooks and no reflog. The leak probe runs against the directory.
+
+The trial mounts it at `/work/<repo>` with `:O`. The agent's edits and commits live in the container's overlay upper layer: visible to the verifier in the same container, discarded afterwards. The snapshot is never modified.
+
+*Fallback if `:O` can't pass through Harbor's compose:* Harbor's `upload_dir` copies the snapshot in at start. It's MBs, except pytortch at about 110 MB, so still cheap.
+
+### P4. Dependency environments: a store keyed by lockfile, hardlinked from the uv cache
+- **Store layout:** `$FR_STORE/envs/<repo>/<key>/`, where `key = sha256(uv.lock + pyproject.toml + python + sync args)[:12]`. Many commits share a lockfile, so most tasks of a repo share one env.
+- **Creation:** `fr env ensure <task>`, also run by `fr run` before a campaign.
+  1. Extract `pyproject.toml` and `uv.lock` at the task's `start_commit` into a temp dir.
+  2. Run `UV_PROJECT_ENVIRONMENT=<dir> UV_LINK_MODE=hardlink uv sync --frozen --no-install-project <args>`.
+
+  The host's `~/.cache/uv` is on the same filesystem, so files are hardlinks: seconds, about 0 extra disk, and downloads happen only for wheels the cache lacks. Free-threaded opencv is already built in the cache.
+- **Interpreters:** `$FR_STORE/python/` (`UV_PYTHON_INSTALL_DIR` during creation), so the store doesn't depend on the user's own `uv python` upgrades. The interpreter version is recorded per env.
+- **Mounts:** each env and its interpreter are mounted read-only at **the same absolute path** as on the host. A venv's `bin/` shebangs and `pyvenv.cfg` hold absolute paths. The container gets `VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT` and `PATH` pointing at it.
+- **Store path:** `$FR_STORE` defaults to `~/.local/share/fitting-room/store`. The path shows up inside sandboxes, revealing the username and nothing else. A neutral `/opt/fr-store` (a NixOS `systemd.tmpfiles` rule owned by `imi`) is preferred if the user changes the NixOS config anyway for Podman. It must stay on the same filesystem as `~/.cache/uv` for hardlinks.
+- **The project itself** (editable install, console scripts) is not in the env. Options, settled by the spike:
+  - (a) env mounted `:O` (writable and disposable), and the task's setup runs `uv sync --frozen --offline` inside the container against the read-only cache mount;
+  - (b) a generated `.pth` plus scripts at env creation pointing at `/work/<repo>/src`;
+  - (c) `UV_NO_SYNC=1` and verifiers that call `/opt/...python` directly, as the two draft tasks already do.
+  
+  Agents that call `uv run` must not fail on a read-only env. That's the acceptance check.
+- **Rust:** `$FR_STORE/cargo/registry` holds the crates registry, mounted read-only. A per-repo target cache `$FR_STORE/cargo-target/<repo>/` is mounted `:O`, so warm builds are reused and trial writes are discarded.
+
+### P5. Harness installs: once per harness version, mounted
+Harbor reinstalls the harness in every trial (no install cache). Hermes takes about 6 minutes, and npm and PyPI downloads every time. Instead:
+- **Installed once:** `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/`, run in a throwaway container from the base image so binaries match Debian:
+  - npm prefix for codex, claude-code and opencode;
+  - omp release binary;
+  - the Hermes venv at its pinned commit.
+- **Mounted:** read-only. The adapters' `install()` becomes "verify the mounted install and put it on PATH". The fitting-room subclasses own this, extending the existing thin subclasses (`adapters/hermes.py`, `adapters/omp.py`) and adding them for codex, claude-code and opencode (overlaps foundation task 4.2).
+- **Version check:** each harness's `--version` output is checked against the pin at trial start, as now.
+
+### P6. Toolkits become store mounts
+`dev-stack`'s bd, openspec and codebase-memory currently come from `fr-toolkit/dev-stack:1` through `dockerfile_append`. They move to `$FR_STORE/toolkits/dev-stack/<digest>/`, mounted read-only on PATH.
+
+Per-task setup has two parts:
+- `bd init --from-jsonl` and the codebase-memory index are produced **once per task** at materialize time, into a toolkit-state dir mounted `:O`;
+- they no longer run in every trial (indexing big repos per trial is slow).
+
+`toolkit.toml` replaces `dockerfile_append` with a `store` section; the schema change is in task 5.x.
+
+### P7. Network
+Unchanged policy: agents get web access; model endpoints go through Agent Vault (GLM) or llama-swap (local); tasks with a public upstream use Harbor's allowlist mode.
+- Agent Vault works as-is (verified).
+- llama-swap needs `--map-host-loopback` (P1).
+- The egress sidecar is Harbor's and has Podman support; the spike verifies an allowlist task blocks `github.com`. Blocking the task repo's own remote (beads `fitting-room-2le`) is designed here as an allowlist entry or a deny in the sidecar, but implemented with 2le.
+
+### P8. Retiring the Docker artifacts
+After the pilot task passes under Podman:
+- **Images:** delete every `fr-*` image from Docker Desktop.
+- **Recipes:** remove `images/repo-python`, `images/repo-rust`, `images/repo-pytortch`, `images/toolkits` and `images/build.sh`. Keep `images/base-cpu` and `images/common/fr-snapshot-init`, which becomes the host-side materialize step's reference.
+- **Code and docs:**
+  - update the vendored skill's task template and `UPSTREAM.md`;
+  - update `docs/running.md`, `docs/harnesses.md` and `images/README.md`;
+  - mark `benchmark-foundation` D2 and D8 as superseded by this change.
+
+## Cost model (target)
+
+| Item | Disk | Time |
+|---|---|---|
+| Base image | about 1 GB once | built once |
+| Harness install | about 0.1–1 GB per harness version, once | once |
+| Env per repo lockfile | about 0 (hardlinks), plus wheels missing from the cache | seconds |
+| Task | snapshot MBs (pytortch about 110 MB) | `fr task materialize`: seconds |
+| Trial | overlay upper (agent's writes) until the container is removed; logs kept | container start in seconds; no build, no install |
+
+Acceptance: a 10-task sequential campaign adds no image layers. Its disk after cleanup is snapshots plus logs.
+
+## Risks / Trade-offs
+
+- **The `:O` option or extra mounts don't pass through Harbor's compose.** Fallback: upload the snapshot (P3), and give a subclass mounts through `extra_docker_compose` generated per trial. The spike's first check.
+- **A read-only env breaks agents' `uv run`.** P4 options (a)–(c). Measured in the spike with a real harness.
+- **Host-path mirroring shows the username in sandboxes.** Accepted, or avoided with `/opt/fr-store`.
+- **Reproducibility.** Envs are keyed by lockfile and the interpreter version is recorded. The store is separate from the user's working venvs, so editing those doesn't change results. Wheels come from the user's uv cache, so pruning that cache only costs re-downloads.
+- **Rootless Podman and the GPU pin.** `CUDA_VISIBLE_DEVICES` stays a soft pin (same as under Docker Desktop). An agent could unset it. Recorded as a known limitation, as before.
+- **Podman and Docker Desktop together.** They're independent. Docker Desktop's WSL integration doesn't touch Podman's socket or storage. Don't set `DOCKER_HOST` globally.
+- **Network speed.** PyPI and crates.io were very slow on 2026-11-19. With envs hardlinked from the existing cache, most environments need no downloads at all.
+
+## Open Questions
+
+- How Podman gets installed: Nix profile (`nix profile install nixpkgs#podman nixpkgs#podman-compose`) or the NixOS config (`virtualisation.podman.enable = true`, plus a tmpfiles rule for `/opt/fr-store`). This is the user's decision, being looked into as of 2026-11-19.
+- Compose frontend: podman-compose 1.x (drives the CLI, no socket) versus `podman compose` over the Podman socket. Pick whichever passes `:O` through; the spike decides.
+- P4's project-install option (a), (b) or (c).

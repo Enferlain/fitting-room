@@ -1,0 +1,46 @@
+# Tasks
+
+Read `design.md` first: its "Verified on this host" table records what is already proven and the exact commands used. Spike results go into `docs/spikes.md` under a new "Podman" section.
+
+## 1. Host setup (user decision first)
+
+- [ ] 1.1 Podman and a compose frontend installed permanently (user's choice: `nix profile install nixpkgs#podman nixpkgs#podman-compose`, or NixOS `virtualisation.podman.enable = true`, plus `/opt/fr-store` via tmpfiles if wanted). Verify `podman info` reports `rootless=true` and a graph root under `/home`, and that `podman compose version` (or `podman-compose version`) runs
+- [ ] 1.2 User config in `~/.config/containers/`: keep `policy.json`, `registries.conf` and `containers.conf` from the spike, and add `[network] pasta_options = ["--map-host-loopback", "169.254.1.2"]`. Drop the unused CDI spec in `~/.config/cdi/` (it points at a missing `/usr/bin/nvidia-cdi-hook`). Verify a container reaches a host test server on 127.0.0.1 through `host.containers.internal`
+- [ ] 1.3 Build `fr-base/cpu:1` with `podman build images/base-cpu`, and verify its size is about 1 GB and the build pulls only Debian, uv and Node
+
+## 2. Spike: one existing task end to end under Podman (decides the open questions)
+
+- [ ] 2.1 Harbor's Podman environment runs the hello-world task with oracle and nop (rewards 1 and 0), with the compose frontend from 1.1. Record which frontend Harbor resolved
+- [ ] 2.2 A `:O` bind mount and a read-only bind mount pass through Harbor (job `environment.mounts` or a compose overlay). Verify the container sees both, and that a write under the `:O` mount doesn't reach the host. If not, switch to the upload fallback (design P3) and record why
+- [ ] 2.3 `tasks/data-processing/label-busy-port` with `docker_image = "fr-base/cpu:1"` (no Dockerfile build), the snapshot mounted `:O` and the data-processing env from the store mounted read-only: oracle passes, nop fails. Record startup time and the disk delta after the trial
+- [ ] 2.4 The same task with one real harness (Claude Code + GLM 5.3 through Agent Vault) passes or fails on merit, with no infrastructure error. Check what `uv run` does against the read-only env, and pick design P4 option (a), (b) or (c)
+- [ ] 2.5 Egress allowlist under Podman: `spikes/netallow` (foundation spike 2.3) blocks `github.com` and allows the model endpoint
+- [ ] 2.6 GPU: `tasks/sd-scripts/responsive-ctrl-c` (or a minimal torch task) under Podman with the 3080 pinned: torch sees exactly the 3080. Record results 2.1–2.6 in `docs/spikes.md`, then user checkpoint: go or no-go on the rest
+
+## 3. Store and environments
+
+- [ ] 3.1 `src/fitting_room/store.py`: `$FR_STORE` resolution (default `~/.local/share/fitting-room/store`, or `/opt/fr-store`), a same-filesystem check against `~/.cache/uv`, and a refusal for paths under `/mnt/`. Unit tests
+- [ ] 3.2 `fr env ensure <task|repo@commit>`: lock-keyed env (design P4) with `UV_LINK_MODE=hardlink`, interpreter in `$FR_STORE/python`, key and interpreter version written to `env.json`. Verify a second task with the same lock reuses the env, a different lock makes a new one, and `du` of a fresh sd-scripts env shows it is mostly hardlinks
+- [ ] 3.3 Rust: registry and per-repo target cache in the store (P4). Toolchain in an `fr-base/rust` image or in the store, installed from a container. Verify hcom's `cargo test --workspace --no-run` runs offline in a trial and a second trial reuses the target cache
+- [ ] 3.4 pytortch: `stage0/.venv` linking the sd-scripts env without Triton (`isolate_python.py`), plus the native build into the target cache (replaces `images/repo-pytortch/fr-pytortch-setup`). Verify the `cubecl_torch/testing` subset from `images/README.md` passes on the 3080 (626 passed / 7 known failures)
+- [ ] 3.5 `fr store gc`: list and remove envs and harness installs no task or run config references. Verify on a fixture store
+
+## 4. Fitting-room Podman environment
+
+- [ ] 4.1 `src/fitting_room/environments/podman.py`, `FrPodmanEnvironment(PodmanEnvironment)`: per-task mounts from `task.toml` `[metadata]` (snapshot `:O`, env and interpreter read-only at identical paths, toolkit and harness mounts), the env variables (`VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT`, `PATH`, `UV_NO_SYNC` per P4), `gpus` capability and WSL GPU wiring with `CUDA_VISIBLE_DEVICES`. Unit tests on the generated compose and mounts
+- [ ] 4.2 `runner.py`: `environment.import_path` set to the subclass. The Agent Vault CA overlay is kept. `fitting_room.json` records the env key, interpreter, harness store path and toolkit digest. `fr run` calls `fr env ensure` and `fr harness ensure` before Harbor. Update `tests/test_runner.py`
+- [ ] 4.3 Storage check (spec "Benchmark storage is off C"): `fr doctor` or a pre-run check. Verify it fails when `FR_STORE` points under `/mnt/c`
+
+## 5. Harness and toolkit stores
+
+- [ ] 5.1 `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/` from a throwaway base container (npm prefix for codex, claude-code and opencode; omp binary; Hermes at the pinned SHA, without browser extras)
+- [ ] 5.2 Adapters' `install()` uses the mounted install (verify `--version` against the pin), for all five harnesses. Overlaps foundation 4.2: do the thin pinned subclasses for codex, claude-code and opencode here. Verify each harness's smoke task starts in under 30 s with no network install
+- [ ] 5.3 Toolkits: `toolkit.toml` loses `dockerfile_append` and gains a store install. `dev-stack` binaries in `$FR_STORE/toolkits/dev-stack/<digest>/`. Per-task bd and codebase-memory state is made at materialize time and mounted `:O`. Re-run the toolkit smoke (`smoke-toolkit-glm`) with Claude Code, omp and Hermes: same results as on Docker
+
+## 6. Tasks, template, docs, cleanup
+
+- [ ] 6.1 `fr task materialize` runs the snapshot-init steps on the host (one commit, no remotes or hooks or reflog, beads sync remotes stripped). The leak probe runs on the directory. Update `tests/test_materialize.py`
+- [ ] 6.2 Task template in the vendored skill: no `environment/Dockerfile`; `[environment] docker_image = "fr-base/cpu:1"` (or the rust base). Update `UPSTREAM.md`. Rewrite the two draft tasks the same way, and verify both validate (oracle 5/5, nop 0) under Podman
+- [ ] 6.3 Docs: `docs/running.md` (Podman setup, store, `fr env` and `fr harness`), `docs/harnesses.md` (installs from the store), `images/README.md` (only base images remain), `docs/spikes.md`. Mark `benchmark-foundation` design D2 and D8 superseded, with a pointer here
+- [ ] 6.4 Retire Docker: remove `images/repo-*`, `images/toolkits`, `images/build.sh` and the Docker-specific runner code; delete the `fr-*` images from Docker Desktop. Verify `uv run pytest` and ruff pass, and that `docker images | grep fr-` is empty
+- [ ] 6.5 Acceptance: a campaign of the available tasks run in sequence with oracle (3 repeats) builds no images. Record the disk delta (store and Podman graph root before and after) in `CHANGELOG.md`
