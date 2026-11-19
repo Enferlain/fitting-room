@@ -13,6 +13,7 @@ visibility = "private"    # private mode: always "private"; shareable: "public" 
 difficulty = "routine"    # or "discovery" (must-be-discovered list not empty)
 repo = "REPO"
 episode_id = "EPISODE-ID"   # from work/mining/selected.json
+start_commit = "SHA"        # repo state at the episode start; fr task materialize reads repo + this
 work_type = "WORK-TYPE"     # feature | refactor | bugfix | investigation | explain | design | docs | config_tooling | review
 grading = "test"            # test | answer | judge (judge: tests/rubric.md, scored by fr judge)
 # gpu_vram_gb = 8          # GPU tasks only; also set [environment] gpus = 1

@@ -191,6 +191,29 @@ def calibrate_score(
         typer.echo(f"  item {d['item']}: you={d['you']} glm={d['glm']} ({d['why']})")
 
 
+task_app = typer.Typer(help="Task authoring helpers.")
+app.add_typer(task_app, name="task")
+
+
+@task_app.command("materialize")
+def task_materialize(
+    task_dir: Path = typer.Argument(..., help="Task directory (contains task.toml)"),
+) -> None:
+    """Write environment/repo/ as `git archive` of [metadata] repo at start_commit."""
+    from fitting_room.tasks.materialize import MaterializeError, materialize
+
+    try:
+        m = materialize(task_dir)
+    except MaterializeError as err:
+        typer.echo(f"error: {err}", err=True)
+        raise typer.Exit(1) from None
+    typer.echo(f"{m.repo}@{m.commit[:12]}: {m.files} files -> {m.dest}")
+    if m.stripped:
+        typer.echo(f"stripped: {', '.join(m.stripped)}")
+    if m.submodules:
+        typer.echo("warning: repo has submodules; their contents are not in the snapshot")
+
+
 serve_app = typer.Typer(help="Start/stop benchmark serving profiles (local models).")
 app.add_typer(serve_app, name="serve")
 

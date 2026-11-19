@@ -2,9 +2,20 @@
 
 Landed progress, newest first. Planning lives in `openspec/changes/benchmark-foundation/`; task status in its `tasks.md`.
 
+## 2026-11-19
+
+### Added
+- Vendored `evals-from-sessions` 1.0.4 (upstream `4e85a197`, MIT) into `.agents/skills/evals-from-sessions/` with a `.claude/skills` symlink; unmodified copy committed first and checked against upstream by SHA-256. Local overrides (candidates from `fr triage`, three grading routes including judge-graded tasks, web access, repo tools, GPU tasks, GLM/local smoke runs) are listed in its `UPSTREAM.md`.
+- `fr task materialize <task>`: writes `environment/repo/` as `git archive` of the task's repo at `start_commit`, without `.env`-style files or outward symlinks.
+
+### Verified
+- Leak probe on a materialized data-processing snapshot: one commit, no remotes/tags/hooks, no strings from later commits.
+
 ## 2026-11-18
 
 ### Added
+- `fr triage`: GLM (max thinking) writes a stand-alone task statement, work type, size, grading route, GPU need and verdict for mined episodes, always covering recent work. Checkpoint 1: 40 candidates selected (`work/mining/selected.md`).
+- Miner attributes an episode to the repo its edits landed in, and reads an archive copy of Claude transcripts (`~/.local/share/claude-transcript-archive`).
 - Pair `codex` × `local` using Harbor's built-in Codex agent against llama-server's Responses API. `fr run` never passes the variables that would make Harbor upload the host Codex login.
 
 ### Verified

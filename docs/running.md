@@ -104,3 +104,22 @@ Each trial is **pass**, **fail** or **infrastructure error**:
 - Agent timeouts, context-window overflows and non-zero agent exits are model failures: the verifier still grades the final state.
 - Exception types Harbor does not recognise are treated as infrastructure errors, so an adapter bug is never scored as a model failure.
 - A trial with no reward at all is an infrastructure error.
+
+## Materializing a task's repo snapshot
+
+`environment/repo/` is never committed. Recreate it with:
+
+```bash
+uv run fr task materialize tasks/<repo>/<slug>
+```
+
+It reads `[metadata] repo` and `start_commit` from `task.toml`, runs `git archive` of
+`~/Projects/<repo>` (override the parent directory with `FR_REPOS_DIR`) at that commit,
+drops `.env`-style files and symlinks that point outside the repo, and records what it
+wrote in `environment/.materialized.json` (outside the image's `COPY repo/`). The task
+Dockerfile re-inits the snapshot as a single commit. Submodule contents are not included;
+the command warns when a repo has them.
+
+Checked 2026-11-19 on data-processing at `43ea94ad` (693 files): the upstream leak probe
+reported one commit, one ref, no remotes, tags, hooks or stashes, and no hits for strings
+from later commits.
