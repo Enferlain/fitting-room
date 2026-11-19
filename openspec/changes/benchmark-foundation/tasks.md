@@ -54,7 +54,7 @@
 - [x] 7.1 Vendor `evals-from-sessions` at `4e85a197` into `.agents/skills/evals-from-sessions/` with a `.claude/skills` symlink, LICENSE and `UPSTREAM.md`, and verify the files match upstream before local edits (diff recorded)
 - [x] 7.2 Apply local skill changes (design D12: extra session sources, `fr mine` as candidate source, GPU metadata, investigative-checklist track, `fr task materialize`), and list them in `UPSTREAM.md`
 - [x] 7.3 Implement `fr task materialize` (`git archive` of the recorded repo and commit into `environment/repo/`), and verify the leak probe on a materialized task reports one commit and no remotes
-- [ ] 7.4 Build per-repo base images for sd-scripts and pytortch-backend-experiments (CUDA) and data-processing and hcom (CPU), and verify each repo's test suite (or a documented subset) runs green in its image at a recent commit
+- [x] 7.4 Build per-repo base images for sd-scripts and pytortch-backend-experiments (CUDA) and data-processing and hcom (CPU), and verify each repo's test suite (or a documented subset) runs green in its image at a recent commit
 - [x] 7.5 User checkpoint 1: review `candidates.md` and select about 20 candidates across the priority repos (record the selection in `work/mining/selected.md`)
 - [ ] 7.6 Author and validate coding-track tasks from the selection (nop 0, oracle 5/5, mutants 0, alt-correct passes, leak probe clean, one smoke run), and verify each task's `report.md` shows all checks
 - [ ] 7.7 Author and validate at least 3 investigative-track tasks (closed-set answers preferred), and verify the same way

@@ -15,6 +15,8 @@ Task images build in three layers:
      only what differs at its commit (data-processing: 8 MB, sd-scripts: 14 MB).
      `SYNC_ARGS` per repo (sd-scripts: `--extra onnx-gpu --all-groups`, its onnx extras
      conflict).
+   - `repo-pytortch`: FROM the sd-scripts image; see the table below. Task images run
+     `fr-snapshot-init && fr-pytortch-setup`.
    - `repo-rust`: toolchain from `rust-toolchain.toml`; registry fetched and test
      binaries pre-built into `CARGO_TARGET_DIR=/opt/cargo-target`.
 3. Task image (`tasks/<repo>/<slug>/environment/Dockerfile`), repo at `/work/<repo>`
@@ -58,4 +60,4 @@ returns whole 2 MB blocks).
 | hcom | `e215adc1c0` | `cargo test --workspace`: all pass except `db::tests::test_open_raw_rejects_temp_symlink_to_non_temp_path` (passes on the host; depends on the host's temp-dir layout). Exclude it in verifiers. |
 | data-processing + dev-stack | `f7585cbc24` | one clean commit; bd lists the snapshot's issues; openspec runs; codebase-memory index ready (12,610 nodes) |
 | sd-scripts | `38cdc295ee` | free-threaded 3.14t; image 29 GB (uv cache + shared venv; opencv-python compiled once, as on the host). Unit suite with the 3080 pinned (`--gpus all -e CUDA_VISIBLE_DEVICES=<3080 UUID>`): 2,577 passed vs 2,569 on the host checkout; the failures are the host's own (stale tests mid-rework, e.g. `library.vendor.lycoris` imports) except `test_bookkeeping_and_peak_memory_stay_flat_as_a_run_grows_tenfold` (memory-growth check, sensitive to `-n 8`). Without a GPU, strategy tests error with "Found no NVIDIA driver". |
-| pytortch-backend-experiments | | CUDA image, not built yet |
+| pytortch-backend-experiments | `0ad1b25474` | Built FROM the sd-scripts image: `stage0/.venv` links `/opt/venv` without Triton via the repo's `isolate_python.py` (as on the host); NVRTC and CUDA headers from torch's nvidia packages; Rust 1.99.1 and a pre-built native target (symlinked; task layer 515 MB). Snapshot excludes `stage5/artifacts/*/**` (16,291 generated files). `cubecl_torch/testing` on the 3080: 626 passed, 9 skipped, 7 failed: all `test_binding_equals_stage5`, which needs `stage0/target/release/cubecl-stage0`, built from the gitignored `.stage0-sources/cubecl` (CubeCL 6bba5fdf) and present only on the host. Stage 5 equivalence is retired (AGENTS.md); exclude these in verifiers. |
