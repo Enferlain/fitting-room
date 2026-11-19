@@ -1,0 +1,3 @@
+# Test-only run: Harbor oracle agent (applies the reference solution).
+harness = "oracle"
+toolkit = "dev-stack"

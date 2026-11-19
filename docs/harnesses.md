@@ -39,3 +39,37 @@ Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude m
 ## Through `fr run`
 
 `configs/campaigns/smoke-real.toml` (hello task, 1 repeat) passed for both supported pairs on 2026-11-17: `cc-glm53flash-medium` (Claude Code 2.1.263 + GLM 5.3 Flash) and `oc-qwen35-9b` (OpenCode 2.2.6 + local Qwen3.5-9B).
+
+## Toolkits (task 4.6)
+
+`dev-stack` (`configs/toolkits/dev-stack/`): bd and openspec on PATH, the codebase-memory
+MCP server (stdio) and its skill. `fr run` stages a hardlinked copy of each task with the
+toolkit's image layer appended; MCP servers and skills go on Harbor's agent config and
+each Harbor agent registers them in its harness's own config. `hook` items are refused
+for every harness (no shared mechanism yet), so `bd prime` is not part of `dev-stack`.
+
+Smoke task `spikes/toolkit-check` (hermes-agora snapshot), 2026-11-19:
+
+| Harness + model | Server registered | MCP tool called | Reward |
+|---|---|---|---|
+| Claude Code + GLM 5.3 Flash | yes | yes | 1 |
+| omp + GLM 5.3 Flash | yes (omp-native `mcp.json`) | yes | 1 |
+| Hermes + GLM 5.3 Flash | yes | yes | 1 |
+| Hermes + Qwen3.5-9B | yes | yes | 1 |
+| OpenCode + Qwen3.5-9B | yes (`mcp connected ... tools=17`) | no, used shell | 0 |
+| Codex + Qwen3.5-9B | yes (`codex mcp list`: enabled) | no, only `list_mcp_resources` | 0 |
+| Claude Code + GLM, toolkit `none` | (none) | (none); bd/openspec absent | 0 |
+
+How an MCP call appears in each trajectory (for the toolkit-usage score, task 8.1):
+
+- Claude Code: function `mcp__codebase-memory__<tool>`.
+- omp: function `write` with `path` `xd://mcp__codebase_memory_<tool>` (omp's tool-call
+  convention); the content is the JSON arguments.
+- Hermes: `tool_search` / `tool_describe`, then `tool_call` with
+  `calls[].name = mcp__codebase_memory__<tool>`.
+- Codex: `mcp_tool_call` items in `codex.txt` with `server` and `tool`;
+  `list_mcp_resources` is a resource probe, not a tool call.
+- OpenCode: MCP tools are registered as `<server>_<tool>`.
+
+With web access, a `none` run tried `npx -y openspec`: "toolkit off" means not provided,
+not unobtainable.

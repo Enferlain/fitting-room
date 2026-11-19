@@ -8,9 +8,11 @@ Landed progress, newest first. Planning lives in `openspec/changes/benchmark-fou
 - Vendored `evals-from-sessions` 1.0.4 (upstream `4e85a197`, MIT) into `.agents/skills/evals-from-sessions/` with a `.claude/skills` symlink; unmodified copy committed first and checked against upstream by SHA-256. Local overrides (candidates from `fr triage`, three grading routes including judge-graded tasks, web access, repo tools, GPU tasks, GLM/local smoke runs) are listed in its `UPSTREAM.md`.
 - `fr task materialize <task>`: writes `environment/repo/` as `git archive` of the task's repo at `start_commit`, without `.env`-style files or outward symlinks.
 
+- Toolkits: `dev-stack` (bd, openspec, codebase-memory MCP + skill) staged per run onto hardlinked task copies; MCP and skills registered through Harbor's agent config; harness/item support table refuses unsupported items. omp gets omp-native MCP config.
 - Images (`images/`): a CPU base (git, uv, Node; build jobs capped), per-repo images with toolchains and warmed dependencies (`images/build.sh <repo>`), and a `dev-stack` toolkit layer (bd 1.3.2, openspec 1.15.0, the user's codebase-memory fork built static) that is off unless a run enables it. Task repos live at `/work/<repo>`. Per-repo snapshot excludes (`configs/repos/`), used for pytortch's 16k generated stage5 artifacts.
 
 ### Verified
+- `dev-stack` toolkit smoke (`spikes/toolkit-check`): Claude Code, omp and Hermes with GLM and Hermes with Qwen3.5-9B pass with real codebase-memory MCP calls; OpenCode and Codex register the server but Qwen3.5-9B does not call its tools (to re-check with a stronger local model); toolkit `none` leaves bd/openspec absent.
 - Repo test suites in their images with the network off: data-processing and hermes-agora all green; hcom 2,615/2,616 (one host temp-dir test); sd-scripts with the 3080 2,577 passed vs 2,569 on the host checkout; pytortch on the 3080 626 passed, 7 failed (retired stage5 equivalence needing a host-only binary).
 - dev-stack layer on a data-processing snapshot: one clean commit, bd shows the snapshot's issues, openspec runs, codebase-memory index ready.
 - Leak probe on a materialized data-processing snapshot: one commit, no remotes/tags/hooks, no strings from later commits.

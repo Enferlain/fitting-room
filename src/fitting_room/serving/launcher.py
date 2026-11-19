@@ -20,6 +20,15 @@ from pathlib import Path
 
 DEFAULT_LISTEN = "127.0.0.1:18080"
 LLAMA_SWAP_EXE = "llama-swap.exe"
+#: PowerShell expression for the executable: FR_LLAMA_SWAP_EXE (a Windows path) if set,
+#: else whatever PATH finds, else the WinGet links folder. PowerShell started from WSL
+#: inherits a PATH that may lack WinGet's links after a WSL restart.
+_EXE_EXPR = (
+    "$(if ($env:FR_LLAMA_SWAP_EXE) { $env:FR_LLAMA_SWAP_EXE } "
+    "elseif (Get-Command llama-swap.exe -ErrorAction SilentlyContinue) "
+    "{ (Get-Command llama-swap.exe).Source } "
+    "else { Join-Path $env:LOCALAPPDATA 'Microsoft\\WinGet\\Links\\llama-swap.exe' })"
+)
 
 
 @dataclass
@@ -82,7 +91,7 @@ def serve_up(
     # llama-swap keeps its own logs, readable at http://<listen>/logs.
     try:
         pid = _ps(
-            f"(Start-Process -FilePath '{LLAMA_SWAP_EXE}' "
+            f"(Start-Process -FilePath {_EXE_EXPR} "
             f"-ArgumentList '-config','\"{win_cfg}\"','-listen','{listen}' "
             f"-WindowStyle Hidden -PassThru).Id"
         )

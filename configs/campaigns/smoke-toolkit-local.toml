@@ -1,0 +1,6 @@
+# dev-stack toolkit smoke (task 4.6) for harnesses driven by the local model.
+runs = ["oc-qwen35-9b-devstack", "codex-qwen35-9b-devstack", "hermes-qwen35-9b-devstack"]
+repeats = 1
+
+[tasks]
+include = ["spikes/toolkit-check"]
