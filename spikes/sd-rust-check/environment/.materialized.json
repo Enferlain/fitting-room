@@ -1,0 +1,12 @@
+{
+ "repo": "sd-scripts",
+ "commit": "5a737c27749bac7eb364d9cf21ea343dc5420234",
+ "files": 1162,
+ "stripped": [],
+ "excluded_patterns": [
+  "docs_design/models-strategy-trainer/_deprecated/**"
+ ],
+ "excluded_files": 0,
+ "included_back": [],
+ "submodules_not_included": false
+}

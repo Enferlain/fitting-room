@@ -1,0 +1,4 @@
+runs = ["test-oracle"]
+repeats = 1
+[tasks]
+include = ["spikes/sd-rust-check"]

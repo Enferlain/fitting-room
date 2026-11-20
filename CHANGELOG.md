@@ -6,6 +6,7 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 ### Changed
 
+- sd-scripts' canonical environment is now a Python + Rust composite (`kind = "python+rust"`): the 3.14t venv plus Rust 1.99.1, the Pliron candidate's crates and a warmed target, provisioned in 42 s. Spike `spikes/sd-rust-check` (N7's commit) builds and tests the crate offline in a trial and imports torch and xDSL from the venv. Store GC keeps both halves of composite environments.
 - Repo benchmark configs now select one canonical dependency environment. `fr env check` reports historical Python lock differences without provisioning anything.
 - Repo-backed campaigns run prebuilt trials in rootless Podman. They copy read-only snapshots into trial storage, mount the canonical Python environment read-only, and record its identity in trial provenance. Rust trials reuse a warmed Cargo seed with trial-local build writes.
 - Added `fr env ensure`, `fr doctor`, and `fr store gc`. Garbage collection previews by default.

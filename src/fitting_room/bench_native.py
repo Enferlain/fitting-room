@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import tarfile
 import tempfile
@@ -31,17 +32,42 @@ RECIPE = 1
 
 def native_key(repo: str, config: dict, configs: Path) -> str:
     kind, commit, rust = config.get("kind"), config.get("commit"), config.get("rust")
-    if kind not in {"rust", "pytortch"}:
+    if kind not in {"rust", "pytortch", "python+rust"}:
         raise StoreError(f"{repo}: invalid [benchmark] kind {kind!r}")
     if not isinstance(commit, str) or not re.fullmatch(r"[a-f0-9]{40}", commit):
         raise StoreError(f"{repo}: [benchmark] commit must be a full Git commit ID")
     if not isinstance(rust, str) or not re.fullmatch(r"\d+\.\d+\.\d+", rust):
         raise StoreError(f"{repo}: [benchmark] rust must pin a toolchain version")
-    python_key = python_inputs("sd-scripts", configs).key if kind == "pytortch" else None
+    python_key = {
+        "pytortch": lambda: python_inputs("sd-scripts", configs).key,
+        "python+rust": lambda: python_inputs(repo, configs).key,
+    }.get(kind, lambda: None)()
     inputs = [RECIPE, kind, commit, rust, python_key]
+    if kind == "python+rust":
+        inputs.append(rust_manifests(repo, config))
     if kind == "pytortch":
         inputs.append(NATIVE_DATA_HOME)
     return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()[:20]
+
+
+def rust_manifests(repo: str, config: dict) -> list[str]:
+    """Cargo manifests warmed for a Python repo that also carries Rust crates."""
+    manifests = config.get("rust_manifests")
+    if (
+        not isinstance(manifests, list)
+        or not manifests
+        or not all(
+            isinstance(m, str)
+            and m.endswith("Cargo.toml")
+            and not m.startswith(("/", ".."))
+            and ".." not in Path(m).parts
+            for m in manifests
+        )
+    ):
+        raise StoreError(
+            f"{repo}: [benchmark] rust_manifests must list repo-relative Cargo.toml paths"
+        )
+    return list(manifests)
 
 
 def _archive(repo: str, commit: str, dest: Path, configs: Path) -> None:
@@ -94,6 +120,16 @@ def _warm(repo: str, config: dict, dest: Path, configs: Path, python: Path | Non
         env["CARGO_TARGET_DIR"] = CARGO_TARGET
         mounts.append(f"{dest / 'target'}:{CARGO_TARGET}")
         script += "cargo fetch --locked\ncargo test --workspace --locked --offline --no-run"
+    elif config["kind"] == "python+rust":
+        # One shared target dir for every manifest, as trials set CARGO_TARGET_DIR.
+        env["CARGO_TARGET_DIR"] = CARGO_TARGET
+        mounts.append(f"{dest / 'target'}:{CARGO_TARGET}")
+        for manifest in rust_manifests(repo, config):
+            path = shlex.quote(manifest)
+            script += (
+                f"\ncargo fetch --locked --manifest-path {path}"
+                f"\ncargo test --locked --offline --no-run --manifest-path {path}"
+            )
     else:
         assert python is not None
         tree = python.parent.parent
@@ -150,7 +186,10 @@ def ensure_environment(
     key = native_key(repo, config, configs)
     dest = store / "envs" / repo / key
     record = dest / "env.json"
-    python = python_inputs("sd-scripts", configs) if config["kind"] == "pytortch" else None
+    python = {
+        "pytortch": lambda: python_inputs("sd-scripts", configs),
+        "python+rust": lambda: python_inputs(repo, configs),
+    }.get(config["kind"], lambda: None)()
     with store_lock(store, exclusive=False):
         with store_lock(store / "locks" / repo / key, exclusive=True):
             if record.is_file():
@@ -168,7 +207,8 @@ def ensure_environment(
                 )
         if python is None:
             return data
-        return ensure_python(python, store, offline=offline) | data
+        env = ensure_python(python, store, offline=offline)
+        return env | data | {"python_key": env["key"]}
 
 
 def _ensure_native(

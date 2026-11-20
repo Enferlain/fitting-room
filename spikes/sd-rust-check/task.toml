@@ -1,0 +1,20 @@
+schema_version = "1.4"
+
+[metadata]
+repo = "sd-scripts"
+start_commit = "5a737c27749bac7eb364d9cf21ea343dc5420234"   # N7's commit
+purpose = "Spike: sd-scripts canonical composite env (Python + Rust) works offline in a trial"
+
+[verifier]
+timeout_sec = 900.0
+environment_mode = "shared"
+
+[agent]
+timeout_sec = 600.0
+network_mode = "allowlist"
+allowed_hosts = []
+
+[environment]
+docker_image = "localhost/fr-base/cpu:1"
+network_mode = "public"
+os = "linux"

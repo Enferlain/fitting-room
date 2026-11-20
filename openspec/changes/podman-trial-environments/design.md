@@ -68,6 +68,8 @@ The snapshot then holds one commit, no remotes, no hooks and no reflog. The leak
 
 Repo configuration pins the source commit, interpreter and sync arguments for the canonical benchmark environment. `fr env ensure <repo>` creates that environment on demand. Change those inputs explicitly at the repo benchmark level and revalidate the affected tasks. Task snapshots, historical lockfiles and interpreter declarations never select or create a different environment.
 
+A repo may be a composite: `kind = "python+rust"` adds a pinned Rust toolchain and the crates of the listed `rust_manifests` to the Python environment, warmed at the canonical commit into a shared target cache (`CARGO_TARGET_DIR`), and offline in trials. sd-scripts is one (2026-11-20, user): its Pliron candidate crate is needed by N7. Every task of a composite repo gets the whole composite; there are no task-specific Rust environments. The store GC keeps both halves.
+
 `fr env check <task>` reports the task snapshot's lock differences for diagnosis. Validate each task on the canonical environment. A historical task that fails for dependency or interpreter reasons must be adapted without changing its substance, or excluded.
 
 Extract the pinned `pyproject.toml` and `uv.lock` into a temporary project and sync with `UV_LINK_MODE=hardlink uv sync --frozen --no-install-project`. The existing uv cache and store must share a filesystem. Use a managed interpreter under `$FR_STORE/python/`. Record the input digest and actual interpreter in the run provenance.

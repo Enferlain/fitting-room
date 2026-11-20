@@ -7,7 +7,13 @@ exclude = [
     "docs_design/models-strategy-trainer/_deprecated/**",
 ]
 
+# One canonical composite environment for every sd-scripts task (user, 2026-11-20): the
+# Python venv plus the repo-level Rust toolchain, crate cache and warmed target for the
+# crates listed here (the Pliron candidate; N7 needs it). No task-specific environments.
 [benchmark]
+kind = "python+rust"
 commit = "38cdc295ee7f8cfe10671f8dd94dee4ff886bd35"
 python = "3.14.5t"
 sync_args = ["--extra", "onnx-gpu", "--all-groups"]
+rust = "1.99.1"
+rust_manifests = ["docs_design/models-strategy-trainer/pliron_candidate/native/Cargo.toml"]

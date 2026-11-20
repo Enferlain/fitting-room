@@ -218,7 +218,7 @@ def _versions(lock: str) -> dict[str, set[str]]:
 def check_task(task: Path, configs: Path = REPO_CONFIGS) -> dict:
     repo, commit = task_source(task)
     config = benchmark_config(repo, configs)
-    if config.get("kind", "python") != "python":
+    if config.get("kind", "python") not in ("python", "python+rust"):
         raise StoreError(f"{repo}: fr env check compares uv locks for Python benchmark configs")
     inputs = python_inputs(repo, configs)
     src = repo_path(repo)

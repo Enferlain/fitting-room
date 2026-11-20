@@ -35,10 +35,13 @@ def collect_store(store: Path, root: ConfigRoot, *, apply: bool = False) -> list
             config = tomllib.loads(path.read_text()).get("benchmark")
             if config is None:
                 continue
-            if config.get("kind", "python") == "python":
-                canonical[path.stem] = python_inputs(path.stem, configs).key
-            else:
-                canonical[path.stem] = native_key(path.stem, config, configs)
+            kind = config.get("kind", "python")
+            keys = set()
+            if kind in ("python", "python+rust"):
+                keys.add(python_inputs(path.stem, configs).key)
+            if kind != "python":
+                keys.add(native_key(path.stem, config, configs))
+            canonical[path.stem] = keys
         run_configs = sorted(root.runs.glob("*.toml"))
         harness_installs = []
         for path in _entries(store / "harness"):
@@ -57,7 +60,7 @@ def collect_store(store: Path, root: ConfigRoot, *, apply: bool = False) -> list
             path
             for path in _entries(store / "envs")
             if path.parent.name in canonical
-            and path.name != canonical[path.parent.name]
+            and path.name not in canonical[path.parent.name]
             and re.fullmatch(r"[a-f0-9]{20}", path.name)
             and (path / "env.json").is_file()
         ]

@@ -130,3 +130,53 @@ def test_native_archive_reports_the_missing_git_commit(tmp_path, benchmark):
     missing = "0" * 40
     with pytest.raises(StoreError, match=rf"example@{missing}: .+{missing}"):
         _archive("example", missing, tmp_path / "archive", configs)
+
+
+def test_composite_python_rust_env_keeps_both_halves_in_gc(tmp_path, benchmark):
+    from fitting_room.bench_native import native_key, rust_manifests
+
+    configs, _, canonical = benchmark
+    manifest = "crates/native/Cargo.toml"
+    (configs / "example.toml").write_text(
+        f'[benchmark]\nkind = "python+rust"\ncommit = "{canonical}"\npython = "3.14.5t"\n'
+        f'rust = "1.99.1"\nrust_manifests = ["{manifest}"]\n'
+    )
+    config = {"kind": "python+rust", "commit": canonical, "rust": "1.99.1"}
+    with pytest.raises(StoreError, match="rust_manifests"):
+        native_key("example", config, configs)
+    for bad in (["/abs/Cargo.toml"], ["../x/Cargo.toml"], ["a/b.toml"], []):
+        with pytest.raises(StoreError):
+            rust_manifests("example", {"rust_manifests": bad})
+    config["rust_manifests"] = [manifest]
+    native = native_key("example", config, configs)
+    assert native != native_key("example", config | {"rust_manifests": ["x/Cargo.toml"]}, configs)
+    root = ConfigRoot(configs.parent)
+    root.runs.mkdir()
+    store = tmp_path / "store"
+    keep = [
+        store / "envs/example" / python_inputs("example", configs).key,
+        store / "envs/example" / native,
+    ]
+    old = store / "envs/example" / ("0" * 20)
+    for path in (*keep, old):
+        path.mkdir(parents=True)
+        (path / "env.json").write_text("{}")
+    assert collect_store(store, root, apply=True) == [old]
+    assert all(path.exists() for path in keep)
+
+
+def test_composite_trial_gets_venv_and_rust_target():
+    from fitting_room.environments.podman import FrPodmanOptions, trial_service
+
+    record = {
+        "venv": "/store/envs/sd/py/venv",
+        "python": "/store/python/cpython-3.14.5t/bin/python3.14t",
+        "kind": "python+rust",
+        "rust": "1.99.1",
+        "native": "/store/envs/sd/native",
+    }
+    service, setup = trial_service(None, None, record, FrPodmanOptions(), 0)
+    env = service["environment"]
+    assert env["VIRTUAL_ENV"] == record["venv"] and env["CARGO_TARGET_DIR"] == "/opt/fr-target"
+    assert env["RUSTUP_TOOLCHAIN"] == "1.99.1" and env["CARGO_NET_OFFLINE"] == "true"
+    assert any("/opt/fr-native-seed/target/." in step for step in setup)
