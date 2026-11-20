@@ -353,3 +353,124 @@ def test_harness_without_item_support_refused(tmp_path):
                      invoke=fake_harbor(calls), now=NOW)  # fmt: skip
     assert "bd-prime (hook)" in str(err.value.problems)
     assert calls == []
+
+
+def test_podman_runner_uses_one_canonical_env_for_all_repo_tasks(tmp_path, monkeypatch):
+    from fitting_room import runner
+    from fitting_room.podman_host import BASE_IMAGE
+
+    run = RunConfig(name="oracle", harness="oracle")
+    campaign = make_campaign(tmp_path, [run], repeats=1)
+    for task in campaign.task_dirs:
+        (task / "environment/repo/.git").mkdir(parents=True)
+        (task / "task.toml").write_text(
+            '[metadata]\nrepo = "example"\nenv = "lock"\n'
+            f'[environment]\ndocker_image = "{BASE_IMAGE}"\n'
+        )
+    store = tmp_path / "store"
+    host_env = {"PODMAN_COMPOSE_PROVIDER": "/usr/local/bin/docker-compose"}
+    record = {"key": "canonical", "interpreter": "Python 3.14.5"}
+    prepared = []
+
+    def ensure(repo, directory, configs):
+        prepared.append(repo)
+        assert directory == store
+        return record
+
+    monkeypatch.setattr(runner, "podman_host_env", lambda: host_env)
+    monkeypatch.setattr(runner, "check_storage", lambda *_: {"FR_STORE": store})
+    monkeypatch.setattr(runner, "ensure_environment", ensure)
+    calls: list[dict] = []
+    (job,) = run_campaign(
+        campaign,
+        tmp_path / "results",
+        ROOT(tmp_path),
+        invoke=fake_harbor(calls),
+        now=NOW,
+    )
+    assert prepared == ["example"]
+    (call,) = calls
+    assert call.pop("_host_env") == host_env
+    config = JobConfig.model_validate(call)
+    assert config.environment.import_path == runner.IMPORT_PATH
+    assert not config.environment.delete
+    assert config.environment.kwargs["repo_environments"] == {"example": record}
+    for directory in trial_dirs(job.job_dir):
+        assert json.loads((directory / SIDECAR_NAME).read_text())["environment"] == record
+
+
+def test_podman_compose_mounts_and_pins_only_gpu_tasks(tmp_path):
+    from fitting_room.environments.podman import FrPodmanOptions, trial_service
+
+    venv = tmp_path / "canonical" / "venv"
+    python = tmp_path / "python" / "tree" / "bin" / "python"
+    harness = tmp_path / "harness"
+    toolkit = tmp_path / "toolkit"
+    uuid = "GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"
+    options = FrPodmanOptions(task_gpu=uuid, harness_path=harness, toolkit_path=toolkit)
+    snapshot = tmp_path / "snapshot"
+    benchmark = {"venv": str(venv), "python": str(python)}
+    service, setup = trial_service(snapshot, "repo", benchmark, options, 1)
+    assert service["init"]
+    assert service["working_dir"] == "/work/repo"
+    assert "/usr/lib/wsl:/usr/lib/wsl:ro" in service["volumes"]
+    binds = {item["source"]: item for item in service["volumes"] if isinstance(item, dict)}
+    assert binds[str(snapshot)]["target"] == "/opt/fr-snapshot"
+    for path in (venv, python.parent.parent.parent, harness, toolkit):
+        assert binds[str(path)]["target"] == str(path)
+    assert all(item["read_only"] for item in binds.values())
+    assert setup == ["cp -a --no-preserve=ownership /opt/fr-snapshot/. ."]
+    assert service["devices"] == ["/dev/dxg"]
+    assert service["environment"]["CUDA_VISIBLE_DEVICES"] == uuid
+    assert "/usr/lib/wsl/lib" in service["environment"]["PATH"].split(":")
+    assert service["environment"]["UV_NO_SYNC"] == "1"
+    cpu, _ = trial_service(snapshot, "repo", benchmark, options, 0)
+    assert "devices" not in cpu
+    assert "CUDA_VISIBLE_DEVICES" not in cpu["environment"]
+    assert "/usr/lib/wsl" not in {item["source"] for item in cpu["volumes"]}
+
+
+@pytest.mark.parametrize(
+    ("gpus", "uuid"), [(2, "GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"), (1, "GPU-invalid")]
+)
+def test_podman_refuses_invalid_gpu_request_before_provisioning(tmp_path, gpus, uuid):
+    from fitting_room.podman_host import BASE_IMAGE
+    from fitting_room.runner import _podman_tasks
+    from fitting_room.store import StoreError
+
+    task = tmp_path / "podman"
+    task.mkdir()
+    (task / "task.toml").write_text(
+        f'[environment]\ndocker_image = "{BASE_IMAGE}"\ngpus = {gpus}\n'
+    )
+    with pytest.raises(StoreError, match=r"require gpus = 1.*task_gpu UUID"):
+        _podman_tasks([task], uuid)
+
+
+def test_pytortch_uses_read_only_llvm_seed_at_warmed_path(tmp_path):
+    from fitting_room.environments.podman import FrPodmanOptions, trial_service
+    from fitting_room.podman_host import NATIVE_DATA_HOME
+
+    seed = tmp_path / "pytortch"
+    service, setup = trial_service(
+        tmp_path / "snapshot",
+        "pytortch-backend-experiments",
+        {
+            "kind": "pytortch",
+            "rust": "1.99.1",
+            "native": str(seed),
+            "venv": str(tmp_path / "sd-scripts" / "venv"),
+            "python": str(tmp_path / "python" / "bin" / "python3.14t"),
+        },
+        FrPodmanOptions(),
+        0,
+    )
+    assert service["environment"]["XDG_DATA_HOME"] == NATIVE_DATA_HOME
+    assert service["environment"]["CARGO_NET_OFFLINE"] == "true"
+    assert any(
+        mount["source"] == str(seed / "tracel")
+        and mount["target"] == f"{NATIVE_DATA_HOME}/tracel"
+        and mount["read_only"]
+        for mount in service["volumes"]
+    )
+    assert setup[-1] == "cubecl_torch/native/build.sh"

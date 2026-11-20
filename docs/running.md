@@ -111,6 +111,18 @@ Each trial is **pass**, **fail** or **infrastructure error**:
 - Exception types Harbor does not recognise are treated as infrastructure errors, so an adapter bug is never scored as a model failure.
 - A trial with no reward at all is an infrastructure error.
 
+## Podman setup (one time)
+
+Tasks whose `task.toml` sets `[environment] docker_image = "localhost/fr-base/cpu:1"` run under rootless Podman (change `podman-trial-environments`). Store and images live on the WSL disk; nothing touches Docker Desktop.
+
+```sh
+podman build -t localhost/fr-base/cpu:1 images/base-cpu            # shared base image
+nix build nixpkgs#docker-compose -o "${FR_STORE:-$HOME/.local/share/fitting-room/store}/tools/docker-compose"
+uv run fr env ensure <repo>                                         # canonical env from configs/repos/<repo>.toml
+```
+
+`fr run` creates missing canonical environments itself and runs Harbor with a PATH without `/mnt/*` entries and with `PODMAN_COMPOSE_PROVIDER` set to that docker-compose (your global podman-compose setting is untouched). `FR_STORE` and `FR_PODMAN_COMPOSE_PROVIDER` override the defaults. `uv run fr env check <task>` reports how a task's historical lock differs from the canonical one; `uv run fr store gc` previews unused environments and harness installs (`--apply` removes them).
+
 ## Materializing a task's repo snapshot
 
 `environment/repo/` is never committed. Recreate it with:

@@ -6,3 +6,8 @@
 exclude = [
     "docs_design/models-strategy-trainer/_deprecated/**",
 ]
+
+[benchmark]
+commit = "38cdc295ee7f8cfe10671f8dd94dee4ff886bd35"
+python = "3.14.5t"
+sync_args = ["--extra", "onnx-gpu", "--all-groups"]

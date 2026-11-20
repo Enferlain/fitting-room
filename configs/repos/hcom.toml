@@ -1,0 +1,4 @@
+[benchmark]
+kind = "rust"
+commit = "e215adc1c0045077cb7abcbe5ae40c20dee2b0d7"
+rust = "1.97.1"

@@ -22,11 +22,11 @@ Very little actually differs between tasks: the repo state at one commit (MB), s
 - **Trials run under rootless Podman inside WSL** (NixOS distro at `D:\WSL\NixOS`), through Harbor's Podman environment with a thin fitting-room subclass. Docker Desktop is no longer used by fitting-room.
 - **No per-task or per-repo image builds.** All trials start from one small base image. A task points at it with `[environment] docker_image`, so Harbor skips building.
 - **Heavy state lives once in a store on the WSL disk** and is mounted read-only:
-  - per-repo dependency environments, keyed by lockfile and made with uv hardlinks from the host cache;
+  - one canonical dependency environment per repo, made with uv hardlinks from the host cache;
   - interpreters;
   - harness installs, one per harness version;
   - toolkit binaries.
-- **The task snapshot is a directory** prepared by `fr task materialize`, already re-initialised as one commit. It is mounted copy-on-write (`:O`), so agent writes vanish with the container.
+- **The task snapshot is a directory** prepared by `fr task materialize`, already re-initialised as one commit. It is mounted read-only and copied into the trial container, so agent writes vanish with the container.
 - **GPU access binds `/dev/dxg` and `/usr/lib/wsl`.** The task GPU is pinned with `CUDA_VISIBLE_DEVICES=<uuid>`.
 - **The existing Docker images and their recipes are retired:**
   - `images/repo-*` and `images/toolkits` go;

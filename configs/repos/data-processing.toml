@@ -1,0 +1,4 @@
+[benchmark]
+commit = "f7585cbc242e9ab26b11630bb2ab525a69f10b4f"
+python = "3.14.10"
+sync_args = ["--all-extras", "--all-groups"]

@@ -19,29 +19,29 @@ Read `design.md` first: its "Verified on this host" table records what is alread
 
 ## 3. Store and environments
 
-- [ ] 3.1 `src/fitting_room/store.py`: `$FR_STORE` resolution (default `~/.local/share/fitting-room/store`, or `/opt/fr-store`), a same-filesystem check against `~/.cache/uv`, and a refusal for paths under `/mnt/`. Unit tests
-- [ ] 3.2 Shared env per repo and interpreter (design P4.1): `fr env ensure <repo>` with `UV_LINK_MODE=hardlink`, interpreter in `$FR_STORE/python`, lock and interpreter version written to `env.json`. Verify that a fresh sd-scripts env is mostly hardlinks into `~/.cache/uv` (`du` on the store versus the env's apparent size) and that it's created without downloads
-- [ ] 3.2b `fr env check <task>` (P4.2): diff the task commit's lock against the shared env's lock and report it. With `[metadata] env = "lock"`, create the lock-keyed env (P4.3). Verify on a fixture: identical lock → shared; different lock with passing validation → shared; `env = "lock"` → a keyed env reused by a second task with the same lock
-- [ ] 3.3 Rust: registry and per-repo target cache in the store (P4). Toolchain in an `fr-base/rust` image or in the store, installed from a container. Verify hcom's `cargo test --workspace --no-run` runs offline in a trial and a second trial reuses the target cache
-- [ ] 3.4 pytortch: `stage0/.venv` linking the sd-scripts env without Triton (`isolate_python.py`), plus the native build into the target cache (replaces `images/repo-pytortch/fr-pytortch-setup`). Verify the `cubecl_torch/testing` subset from `images/README.md` passes on the 3080 (626 passed / 7 known failures)
-- [ ] 3.5 `fr store gc`: list and remove envs and harness installs no task or run config references. Verify on a fixture store
+- [x] 3.1 `src/fitting_room/store.py`: `$FR_STORE` resolution (default `~/.local/share/fitting-room/store`, or `/opt/fr-store`), a same-filesystem check against `~/.cache/uv`, and a refusal for paths under `/mnt/`. Unit tests
+- [x] 3.2 Canonical env per repo (design P4): `fr env ensure <repo>` with `UV_LINK_MODE=hardlink`, interpreter in `$FR_STORE/python`, lock and interpreter version written to `env.json`. Verify the sd-scripts env is mostly hardlinks into `~/.cache/uv` and can be recreated offline once the cache is populated
+- [x] 3.2b `fr env check <task>` (P4): report lock differences against the canonical env without changing it. Verify that historical differences cannot create an environment
+- [x] 3.3 Rust: registry and per-repo target cache in the store (P4). Toolchain in an `fr-base/rust` image or in the store, installed from a container. Verify hcom's `cargo test --workspace --no-run` runs offline in a trial and a second trial reuses the target cache
+- [x] 3.4 pytortch: `stage0/.venv` linking the sd-scripts env without Triton (`isolate_python.py`), plus the native build into the target cache (replaces `images/repo-pytortch/fr-pytortch-setup`). Verify the `cubecl_torch/testing` subset from `images/README.md` passes on the 3080 (626 passed, 9 skipped, 7 retired Stage 5 equivalence cases deselected)
+- [x] 3.5 `fr store gc`: list and remove envs and harness installs no task or run config references. Verify on a fixture store
 
 ## 4. Fitting-room Podman environment
 
-- [ ] 4.1 `src/fitting_room/environments/podman.py`, `FrPodmanEnvironment(PodmanEnvironment)`: per-task mounts from `task.toml` `[metadata]` (snapshot `:O`, env and interpreter read-only at identical paths, toolkit and harness mounts), the env variables (`VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT`, `PATH`, `UV_NO_SYNC` per P4), `gpus` capability and WSL GPU wiring with `CUDA_VISIBLE_DEVICES`. Unit tests on the generated compose and mounts
-- [ ] 4.2 `runner.py`: `environment.import_path` set to the subclass. The Agent Vault CA overlay is kept. `fitting_room.json` records the env key, interpreter, harness store path and toolkit digest. `fr run` calls `fr env ensure` and `fr harness ensure` before Harbor. Update `tests/test_runner.py`
-- [ ] 4.3 Storage check (spec "Benchmark storage is off C"): `fr doctor` or a pre-run check. Verify it fails when `FR_STORE` points under `/mnt/c`
+- [x] 4.1 `src/fitting_room/environments/podman.py`, `FrPodmanEnvironment(PodmanEnvironment)`: per-task mounts from `task.toml` `[metadata]` (read-only snapshot copied into trial storage, env and interpreter read-only at identical paths, toolkit and harness mounts), the env variables (`VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT`, `PATH`, `UV_NO_SYNC` per P4), `gpus` capability and WSL GPU wiring with `CUDA_VISIBLE_DEVICES`. Unit tests on the generated compose and mounts
+- [x] 4.2 `runner.py`: `environment.import_path` set to the subclass. The Agent Vault CA overlay is kept. `fitting_room.json` records the env key, interpreter, harness store path and toolkit digest. `fr run` ensures the repo environment before Harbor. Update `tests/test_runner.py`
+- [x] 4.3 Storage check (spec "Benchmark storage is off C"): `fr doctor` or a pre-run check. Verify it fails when `FR_STORE` points under `/mnt/c`
 
 ## 5. Harness and toolkit stores
 
-- [ ] 5.1 `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/` from a throwaway base container (npm prefix for codex, claude-code and opencode; omp binary; Hermes at the pinned SHA, without browser extras)
+- [ ] 5.1 `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/` from a throwaway base container (npm prefix for codex, claude-code and opencode; omp binary; Hermes at the pinned SHA, without browser extras). Write `harness.json` with `harness` and `version` for store GC. Have `fr run` provision the pinned harness before Harbor
 - [ ] 5.2 Adapters' `install()` uses the mounted install (verify `--version` against the pin), for all five harnesses. Overlaps foundation 4.2: do the thin pinned subclasses for codex, claude-code and opencode here. Verify each harness's smoke task starts in under 30 s with no network install
 - [ ] 5.3 Toolkits: `toolkit.toml` loses `dockerfile_append` and gains a store install. `dev-stack` binaries in `$FR_STORE/toolkits/dev-stack/<digest>/`. `bd init` stays per trial (into the repo overlay). Rework `spikes/toolkit-check` to bd and openspec only, and re-run it with Claude Code, omp and Hermes
 
 ## 6. Tasks, template, docs, cleanup
 
 - [ ] 6.1 `fr task materialize` runs the snapshot-init steps on the host (one commit, no remotes or hooks or reflog, beads sync remotes stripped). The leak probe runs on the directory. Update `tests/test_materialize.py`
-- [ ] 6.2 Task template in the vendored skill: no `environment/Dockerfile`; `[environment] docker_image = "fr-base/cpu:1"` (or the rust base). Update `UPSTREAM.md`. Rewrite the two draft tasks the same way, and verify both validate (oracle 5/5, nop 0) under Podman
+- [ ] 6.2 Task template in the vendored skill: no `environment/Dockerfile`; `[environment] docker_image = "fr-base/cpu:1"` (or the rust base). Update `UPSTREAM.md`. Migrate compatible drafts, adapting them to the canonical environment where needed, and verify they validate (oracle 5/5, nop 0) under Podman
 - [ ] 6.3 Docs: `docs/running.md` (Podman setup, store, `fr env` and `fr harness`), `docs/harnesses.md` (installs from the store), `images/README.md` (only base images remain), `docs/spikes.md`. Mark `benchmark-foundation` design D2 and D8 superseded, with a pointer here
 - [ ] 6.4 Retire Docker: remove `images/repo-*`, `images/toolkits`, `images/build.sh` and the Docker-specific runner code; delete the `fr-*` images from Docker Desktop. Verify `uv run pytest` and ruff pass, and that `docker images | grep fr-` is empty
 - [ ] 6.5 Acceptance: a campaign of the available tasks run in sequence with oracle (3 repeats) builds no images. Record the disk delta (store and Podman graph root before and after) in `CHANGELOG.md`

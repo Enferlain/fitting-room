@@ -216,6 +216,95 @@ def task_materialize(
         typer.echo("warning: repo has submodules; their contents are not in the snapshot")
 
 
+env_app = typer.Typer(help="Provision and inspect canonical repo environments.")
+app.add_typer(env_app, name="env")
+
+store_app = typer.Typer(help="Manage the benchmark store.")
+app.add_typer(store_app, name="store")
+
+
+@env_app.command("ensure")
+def env_ensure(
+    repo: str,
+    repo_root: Path = typer.Option(Path("."), help="fitting-room repo root"),
+    offline: bool = typer.Option(False, help="Use cached inputs without downloading"),
+) -> None:
+    """Provision the environment pinned in configs/repos/<repo>.toml."""
+    import json
+
+    from fitting_room.bench_native import ensure_environment
+    from fitting_room.store import store_path
+    from fitting_room.tasks.materialize import MaterializeError
+
+    try:
+        manifest = ensure_environment(
+            repo, store_path(), repo_root / "configs/repos", offline=offline
+        )
+    except (OSError, ValueError, MaterializeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(manifest, indent=2))
+
+
+@env_app.command("check")
+def env_check(
+    task: Path,
+    repo_root: Path = typer.Option(Path("."), help="fitting-room repo root"),
+) -> None:
+    """Report historical lock differences without changing the store."""
+    import json
+
+    from fitting_room.bench_env import check_task
+    from fitting_room.tasks.materialize import MaterializeError
+
+    try:
+        diagnostic = check_task(task, repo_root / "configs/repos")
+    except (OSError, ValueError, MaterializeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+    typer.echo(json.dumps(diagnostic, indent=2))
+
+
+@store_app.command("gc")
+def store_gc(
+    repo_root: Path = typer.Option(Path("."), help="fitting-room repo root"),
+    apply: bool = typer.Option(False, "--apply", help="Remove the listed entries"),
+) -> None:
+    """Preview obsolete repo environments and unused harness installs."""
+    from fitting_room.store import store_path
+    from fitting_room.store_gc import collect_store
+    from fitting_room.tasks.materialize import MaterializeError
+
+    try:
+        paths = collect_store(store_path(), ConfigRoot(repo_root / "configs"), apply=apply)
+    except (OSError, ValueError, ConfigError, MaterializeError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+    for path in paths:
+        typer.echo(f"{'removed' if apply else 'unused'} {path}")
+    if not paths:
+        typer.echo("No unused entries found")
+
+
+@app.command()
+def doctor(
+    repo_root: Path = typer.Option(Path("."), help="fitting-room repo root"),
+    results: Path = typer.Option(Path("results"), help="Campaign results directory"),
+) -> None:
+    """Check rootless Podman and benchmark storage locations."""
+    from fitting_room.podman_host import check_storage, podman_host_env
+    from fitting_room.store import check_uv_filesystem, store_path, uv_cache
+
+    try:
+        check_uv_filesystem(store_path(), uv_cache())
+        paths = check_storage(repo_root / "tasks", repo_root / results, podman_host_env())
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+    for label, path in paths.items():
+        typer.echo(f"{label} = {path}")
+
+
 serve_app = typer.Typer(help="Start/stop benchmark serving profiles (local models).")
 app.add_typer(serve_app, name="serve")
 

@@ -7,10 +7,10 @@ Defines how a trial's environment is assembled, so that adding tasks or running 
 ## ADDED Requirements
 
 ### Requirement: Heavy state is stored once
-Toolchains, interpreters, dependency environments, harness installs and toolkit binaries SHALL be stored once per machine (or per repo lockfile) and shared read-only by every trial that uses them. Adding a task SHALL NOT build or copy any of them.
+Toolchains, interpreters, dependency environments, harness installs and toolkit binaries SHALL be stored once per machine (or per repo) and shared read-only by every trial that uses them. Adding a task SHALL NOT build or copy any of them.
 
 #### Scenario: Ten tasks of one repo
-- **WHEN** ten tasks from sd-scripts whose commits share one `uv.lock` are materialized and run once each
+- **WHEN** ten tasks from sd-scripts at commits with different `uv.lock` files are materialized and run once each
 - **THEN** one dependency environment exists for them, no image is built, and disk use outside the store grows only by the ten snapshots and the trial logs
 
 ### Requirement: Trials leave nothing behind
@@ -27,16 +27,12 @@ Images, the store, snapshots and results SHALL live on the WSL distro's disk (D:
 - **WHEN** `fr doctor` (or the equivalent check) runs
 - **THEN** it reports Podman's graph root, `$FR_STORE`, `tasks/` and `results/` on the WSL filesystem, and fails if any of them is under `/mnt/c`
 
-### Requirement: Environments are reused, not rebuilt per task
-A task SHALL use its repo's shared environment unless its lockfile differs AND its validation fails on the shared environment, or it needs a different interpreter. Only then SHALL a separate environment be created, keyed by lockfile, interpreter and sync arguments (never by commit or task). The environment used and its interpreter version SHALL be recorded in each trial's `fitting_room.json`.
+### Requirement: Each repo uses one canonical benchmark environment
+Every task SHALL use the benchmark environment defined by its repo configuration. Historical locks and interpreter requirements MAY be reported diagnostically. They SHALL never select or create a different environment. Record the environment identity and actual interpreter version in each trial's `fitting_room.json`.
 
-#### Scenario: Lock differs but validation passes
-- **WHEN** a task's commit has a different `uv.lock` from the shared environment but its oracle passes 5/5 and nop fails on the shared environment
-- **THEN** the task uses the shared environment and no new environment is created
-
-#### Scenario: Validation needs the task's own lock
-- **WHEN** a task's oracle fails on the shared environment because of a dependency difference
-- **THEN** the task is marked `env = "lock"`, gets an environment keyed by its lockfile, and a second task with the same lockfile reuses that environment
+#### Scenario: Historical task has different dependencies
+- **WHEN** a task was mined from a commit with a different lockfile or interpreter
+- **THEN** it is validated on the repo's canonical environment and is adapted or excluded if it cannot pass on that environment
 
 ### Requirement: GPU access and pinning under Podman
 A GPU task SHALL get the WSL GPU device and driver libraries, with `CUDA_VISIBLE_DEVICES` set to the campaign's task GPU UUID. Non-GPU tasks SHALL get no GPU device.

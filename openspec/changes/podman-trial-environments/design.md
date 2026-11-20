@@ -64,27 +64,19 @@ The snapshot then holds one commit, no remotes, no hooks and no reflog. The leak
 
 **Decided by the spike (2026-11-20):** the trial mounts the snapshot **read-only** at `/opt/fr-snapshot`, and the container copies it to `/work/<repo>` at start: `cp -a` in the main service's command, or an exec in the subclass's `start()` with a ready marker. The copy lives in the container's writable layer: visible to the verifier, gone with the container. `:O` copy-on-write mounts were the first idea, but through compose and the Podman API they silently become read-write binds (`docs/spikes.md`, Podman section).
 
-### P4. Dependency environments: shared per repo, a separate one only when it's worth it
-Environments are never built per task or per commit. Rebuild triggers, cheapest first:
+### P4. One canonical benchmark environment per repo
 
-1. **Shared env per repo and interpreter (default).** Each repo has one env in the store, synced from a recent lockfile, like the old images' "warm" venv but stored once on the WSL disk. Every task of that repo uses it. Nothing is created when a task is added.
-2. **A lock-specific env only when needed.** `fr env check <task>` compares the task commit's `uv.lock` with the shared env's lock (package name → version sets) and reports the difference. If they're identical, the task uses the shared env. If they differ, the task still uses the shared env **if its validation passes on it** (oracle 5/5, nop 0, the verifier's own test command). Only when validation fails does the task get its own env, recorded in `task.toml` as `[metadata] env = "lock"`. A different interpreter (e.g. the 3.13 sd-scripts commits) always needs its own env.
-3. **A lock-specific env is keyed by its inputs, not the commit:** `sha256(uv.lock + pyproject.toml + python + sync args)[:12]` under `$FR_STORE/envs/<repo>/<key>/`. Tasks that need the same lock share it.
+Repo configuration pins the source commit, interpreter and sync arguments for the canonical benchmark environment. `fr env ensure <repo>` creates that environment on demand. Change those inputs explicitly at the repo benchmark level and revalidate the affected tasks. Task snapshots, historical lockfiles and interpreter declarations never select or create a different environment.
 
-Creating any env: extract `pyproject.toml` and `uv.lock` at the relevant commit into a temp dir, then run `UV_PROJECT_ENVIRONMENT=<dir> UV_LINK_MODE=hardlink uv sync --frozen --no-install-project <args>`. The host's `~/.cache/uv` is on the same filesystem, so files are hardlinks: seconds, about 0 extra disk, downloads only for wheels the cache lacks (free-threaded opencv is already built there). Shared envs are refreshed only by an explicit `fr env refresh <repo>`, which re-validates the tasks that use them.
+`fr env check <task>` reports the task snapshot's lock differences for diagnosis. Validate each task on the canonical environment. A historical task that fails for dependency or interpreter reasons must be adapted without changing its substance, or excluded.
 
-*Considered and rejected:* syncing the difference into a copy-on-write copy of the shared env at every trial start. It's correct, but it pays the sync on every trial and repeat, needs the uv cache inside the sandbox, and needs network access for missing wheels.
+Extract the pinned `pyproject.toml` and `uv.lock` into a temporary project and sync with `UV_LINK_MODE=hardlink uv sync --frozen --no-install-project`. The existing uv cache and store must share a filesystem. Use a managed interpreter under `$FR_STORE/python/`. Record the input digest and actual interpreter in the run provenance.
 
-- **Interpreters:** `$FR_STORE/python/` (`UV_PYTHON_INSTALL_DIR` during creation), so the store doesn't depend on the user's own `uv python` upgrades. The interpreter version is recorded per env.
-- **Mounts:** each env and its interpreter are mounted read-only at **the same absolute path** as on the host. A venv's `bin/` shebangs and `pyvenv.cfg` hold absolute paths. The container gets `VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT` and `PATH` pointing at it.
-- **Store path:** `$FR_STORE` defaults to `~/.local/share/fitting-room/store`. The path shows up inside sandboxes, revealing the username and nothing else. A neutral `/opt/fr-store` (a NixOS `systemd.tmpfiles` rule owned by `imi`) is preferred if the user changes the NixOS config anyway for Podman. It must stay on the same filesystem as `~/.cache/uv` for hardlinks.
-- **The project itself** (editable install, console scripts) is not in the env. Options, settled by the spike:
-  - (a) env mounted `:O` (writable and disposable), and the task's setup runs `uv sync --frozen --offline` inside the container against the read-only cache mount;
-  - (b) a generated `.pth` plus scripts at env creation pointing at `/work/<repo>/src`;
-  - (c) `UV_NO_SYNC=1` and verifiers that call `/opt/...python` directly, as the two draft tasks already do.
-  
-  Agents that call `uv run` must not fail on a read-only env. That's the acceptance check.
-- **Rust:** `$FR_STORE/cargo/registry` holds the crates registry, mounted read-only. A per-repo target cache `$FR_STORE/cargo-target/<repo>/` is mounted `:O`, so warm builds are reused and trial writes are discarded.
+Mount the environment and its interpreter read-only at their original absolute paths. Set `VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT`, `PATH` and `UV_NO_SYNC=1`. Expose the trial source tree through a generated `.pth` and console scripts based on the canonical project metadata.
+
+For Rust, mount the warmed Cargo home, toolchain and target cache read-only. Copy Cargo home and the target cache into trial-local storage so Cargo can take locks and write build outputs. Use reflinks where supported. For pytortch, the Tracel LLVM SDK is part of the read-only seed, mounted at the same XDG data path used during warming. The compose path does not preserve `:O` (P3).
+
+The store defaults to `~/.local/share/fitting-room/store`. Set `FR_STORE=/opt/fr-store` to use a neutral mount path. `fr doctor` checks rootless Podman and the storage paths, including the filesystem shared with the uv cache. `fr store gc` previews stale keys and unused harness versions. `--apply` waits for active campaigns to release their store locks before removing entries.
 
 ### P5. Harness installs: once per harness version, mounted
 Harbor reinstalls the harness in every trial (no install cache). Hermes takes about 6 minutes, and npm and PyPI downloads every time. Instead:
@@ -98,7 +90,7 @@ Harbor reinstalls the harness in every trial (no install cache). Hermes takes ab
 ### P6. Toolkits become store mounts
 `dev-stack` is bd and openspec. codebase-memory was removed on 2026-11-20 (user): its index writes far too much for what the benchmark needs. The two binaries come from `fr-toolkit/dev-stack:1` through `dockerfile_append` today. They move to `$FR_STORE/toolkits/dev-stack/<digest>/`, mounted read-only on PATH.
 
-`bd init --from-jsonl --non-interactive --skip-hooks --skip-agents` stays a per-trial setup step. It's small and fast, and it writes into the repo's `:O` overlay, so it vanishes with the trial. MCP and skill items stay supported for future toolkits.
+`bd init --from-jsonl --non-interactive --skip-hooks --skip-agents` stays a per-trial setup step. It's small and fast, and it writes into the trial's writable layer, so it vanishes with the trial. MCP and skill items stay supported for future toolkits.
 
 `toolkit.toml` replaces `dockerfile_append` with a `store` section; the schema change is in task 5.x.
 
@@ -123,7 +115,7 @@ After the pilot task passes under Podman:
 |---|---|---|
 | Base image | about 1 GB once | built once |
 | Harness install | about 0.1–1 GB per harness version, once | once |
-| Env per repo lockfile | about 0 (hardlinks), plus wheels missing from the cache | seconds |
+| Canonical env per repo | about 0 (hardlinks), plus wheels missing from the cache | seconds |
 | Task | snapshot MBs (pytortch about 110 MB) | `fr task materialize`: seconds |
 | Trial | overlay upper (agent's writes) until the container is removed; logs kept | container start in seconds; no build, no install |
 
@@ -132,9 +124,8 @@ Acceptance: a 10-task sequential campaign adds no image layers. Its disk after c
 ## Risks / Trade-offs
 
 - **The `:O` option or extra mounts don't pass through Harbor's compose.** Fallback: upload the snapshot (P3), and give a subclass mounts through `extra_docker_compose` generated per trial. The spike's first check.
-- **A read-only env breaks agents' `uv run`.** P4 options (a)–(c). Measured in the spike with a real harness.
 - **Host-path mirroring shows the username in sandboxes.** Accepted, or avoided with `/opt/fr-store`.
-- **Reproducibility.** Envs are keyed by lockfile and the interpreter version is recorded. The store is separate from the user's working venvs, so editing those doesn't change results. Wheels come from the user's uv cache, so pruning that cache only costs re-downloads.
+- **Reproducibility.** The canonical inputs and actual interpreter version are recorded. The store is separate from the user's working venvs, so editing those doesn't change results. Wheels come from the user's uv cache, so pruning that cache only costs re-downloads.
 - **Rootless Podman and the GPU pin.** `CUDA_VISIBLE_DEVICES` stays a soft pin (same as under Docker Desktop). An agent could unset it. Recorded as a known limitation, as before.
 - **Podman and Docker Desktop together.** They're independent. Docker Desktop's WSL integration doesn't touch Podman's socket or storage. Don't set `DOCKER_HOST` globally.
 - **Network speed.** PyPI and crates.io were very slow on 2026-11-19. With envs hardlinked from the existing cache, most environments need no downloads at all.
@@ -142,10 +133,6 @@ Acceptance: a 10-task sequential campaign adds no image layers. Its disk after c
 ## Decided (formerly open questions)
 
 - **Podman install:** NixOS module (`virtualisation.podman.enable = true`, `dockerCompat = false`), done by the user on 2026-11-20. `/opt/fr-store` (tmpfiles) is not set up, so `$FR_STORE` defaults to `~/.local/share/fitting-room/store`.
-- **Compose frontend:** `podman compose` with a fitting-room-local provider, nixpkgs' docker-compose over the Podman socket, set by the runner only for its Harbor calls. The user's global `PODMAN_COMPOSE_PROVIDER` (podman-compose) stays. podman-compose 1.5 lacks `cp` and `exec --no-TTY`.
-- **Project install (P4):** option (b), i.e. `UV_NO_SYNC=1` plus a generated `.pth` and console scripts for the project source (spike 2.4: `uv run` tried to build the project from PyPI and failed under the allowlist).
+- **Compose frontend:** `podman compose` with a fitting-room-local provider, nixpkgs' docker-compose over the Podman socket, pinned as a Nix GC root at `$FR_STORE/tools/docker-compose` (`nix build nixpkgs#docker-compose -o "$FR_STORE/tools/docker-compose"`; `FR_PODMAN_COMPOSE_PROVIDER` overrides), set by the runner only for its Harbor calls. The user's global `PODMAN_COMPOSE_PROVIDER` (podman-compose) stays. podman-compose 1.5 lacks `cp` and `exec --no-TTY`.
+- **Project install (P4):** `UV_NO_SYNC=1` plus a generated `.pth` and console scripts for the project source (spike 2.4: `uv run` tried to build the project from PyPI and failed under the allowlist).
 - **`environment.delete = false`:** checked in Harbor 0.26's `DockerEnvironment.stop()`. It still runs `compose down` (containers and networks removed) and only omits `--rmi local --volumes --remove-orphans`. No named volumes are used, so nothing piles up. Verified: 0 containers, networks or volumes after trials.
-
-## Open Questions
-
-- Whether lock-specific environments (P4.2–P4.3) are kept, or every task must pass on its repo's shared environment, with tasks that don't being dropped. User decision before section 3.

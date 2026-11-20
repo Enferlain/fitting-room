@@ -1,6 +1,17 @@
 # Changelog
 
-Landed progress, newest first. Planning lives in `openspec/changes/benchmark-foundation/`; task status in its `tasks.md`.
+Landed progress, newest first. Planning and task status live under `openspec/changes/`.
+
+## 2026-11-20
+
+### Changed
+
+- Repo benchmark configs now select one canonical dependency environment. `fr env check` reports historical Python lock differences without provisioning anything.
+- Repo-backed campaigns run prebuilt trials in rootless Podman. They copy read-only snapshots into trial storage, mount the canonical Python environment read-only, and record its identity in trial provenance. Rust trials reuse a warmed Cargo seed with trial-local build writes.
+- Added `fr env ensure`, `fr doctor`, and `fr store gc`. Garbage collection previews by default.
+- Review fixes: trials mount the whole interpreter store, so venvs linked through uv's minor-version alias (`cpython-3.14-…`) resolve in the container (data-processing's verifier failed to start Python without it). The compose provider is a Nix GC root at `$FR_STORE/tools/docker-compose` instead of a `/nix/store` glob that garbage collection or a second version would break. Podman setup documented in `docs/running.md`.
+- Migrated the two private drafts. `responsive-ctrl-c` passed five oracle trials and scored zero in five no-op trials on canonical Python 3.14t.
+- Verified the pytortch CubeCL subset on the RTX 3080 across two batches, with 626 passes and 9 skips. The final warmed LLVM seed supports network-disabled native setup.
 
 ## 2026-11-19
 

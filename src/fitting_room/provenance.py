@@ -65,13 +65,28 @@ def build_sidecar(run: RunConfig, root: ConfigRoot, task_dir: Path, campaign: st
     }
 
 
-def write_sidecars(job_dir: Path, run: RunConfig, root: ConfigRoot, campaign: str) -> int:
+def write_sidecars(
+    job_dir: Path,
+    run: RunConfig,
+    root: ConfigRoot,
+    campaign: str,
+    *,
+    podman_options: dict | None = None,
+) -> int:
     """Write a sidecar into every trial of a finished Harbor job. Returns the count."""
     n = 0
     for result_path in sorted(job_dir.glob("*/result.json")):
         result = json.loads(result_path.read_text())
         task_path = Path((result.get("task_id") or {}).get("path") or "")
         sidecar = build_sidecar(run, root, task_path, campaign)
+        if podman_options is not None:
+            from fitting_room.environments.podman import task_repo
+
+            source = task_repo(task_path)
+            environment = podman_options["repo_environments"].get(source)
+            sidecar["environment"] = environment
+            sidecar["harness_store_path"] = podman_options.get("harness_path")
+            sidecar["toolkit_store_path"] = podman_options.get("toolkit_path")
         sidecar["trial"] = result.get("trial_name")
         (result_path.parent / SIDECAR_NAME).write_text(json.dumps(sidecar, indent=2) + "\n")
         n += 1

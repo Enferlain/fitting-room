@@ -9,3 +9,8 @@
 exclude = [
     "stage5/artifacts/*/**",
 ]
+
+[benchmark]
+kind = "pytortch"
+commit = "0ad1b25474db049acb033e3f103a2e450fa2fe70"
+rust = "1.99.1"
