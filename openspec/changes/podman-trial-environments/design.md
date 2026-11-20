@@ -21,7 +21,7 @@ It replaces how a trial's environment is assembled.
 | GPU | 3080 and 3090 visible. With `CUDA_VISIBLE_DEVICES=GPU-510ddc27-…`, torch sees 1 device (the 3080) and ran a 4096² matmul in 3.8 s including startup | `--device /dev/dxg -v /usr/lib/wsl:/usr/lib/wsl:ro -e LD_LIBRARY_PATH=/usr/lib/wsl/lib` |
 | CDI | **does not work as generated**: `nvidia-ctk cdi generate --mode=wsl` writes `/usr/bin/nvidia-cdi-hook`, which doesn't exist on NixOS. Use the plain bind above instead (or regenerate with `--nvidia-cdi-hook-path`). | |
 | Host env mounted read-only into a stock image | the host's `sd-scripts/.venv-wsl` plus `~/.local/share/uv/python`, bound at the **same paths** into `debian:trixie-slim`, imported torch and ran CUDA | `-v $P:$P:ro -v $V:$V:ro` |
-| Copy-on-write mount `:O` | the container changed and added files under the mount; the host directory was unchanged afterwards | `-v src:/work/repo:O` |
+| Copy-on-write mount `:O` | works with `podman run` (the host directory was unchanged), but **not through compose**: via docker-compose and the Podman API it became a plain read-write bind (2026-11-20). See P3. | `-v src:/work/repo:O` |
 | Agent Vault | `api.z.ai` resolves to the FakeIP (198.18.0.4) inside containers. `GET /api/coding/paas/v4/models` with the placeholder key returned 200, TLS verified against `work/certs/ca-bundle.crt` | curl image |
 | Host services (llama-swap on 127.0.0.1) | **not** reachable through `host.containers.internal` by default. Reachable with `--network pasta:--map-host-loopback=169.254.1.2` (`host.containers.internal` resolves to 169.254.1.2). WSL is in mirrored networking mode, so Windows' 127.0.0.1 is WSL's. | python http.server on 127.0.0.1:18099 |
 
@@ -38,7 +38,13 @@ It replaces how a trial's environment is assembled.
 - declares `gpus=True` in `capabilities` and, for a GPU task, adds the `/dev/dxg` device, the read-only `/usr/lib/wsl` bind, `LD_LIBRARY_PATH` and `CUDA_VISIBLE_DEVICES` (Harbor only wires GPUs for Docker);
 - computes the per-task mounts (P3–P6) from the task's `task.toml` `[metadata]` and the run's toolkit. A job covers many tasks, so mounts cannot be job-level;
 - sets pasta's `--map-host-loopback` (per container, or once in `containers.conf` `[network] pasta_options`) so `host.containers.internal:18080` reaches llama-swap;
-- keeps the run-level Agent Vault CA overlay unchanged (`work/overlays/agent-vault-ca.compose.yaml`).
+- keeps the run-level Agent Vault CA overlay unchanged (`work/overlays/agent-vault-ca.compose.yaml`);
+- sets `init: true` on the main service, so `down` doesn't wait 10 s on `sleep infinity`.
+
+The runner (spike findings, 2026-11-20) calls Harbor with:
+- `PATH` without `/mnt/*` entries: about 1 s saved per Podman call;
+- `PODMAN_COMPOSE_PROVIDER` set to nixpkgs' docker-compose, a Compose V2 dialect for `cp` and `exec --no-TTY`. The user's global setting stays podman-compose;
+- `environment.delete = false`. With delete on, Harbor's `down --rmi local` removed the shared base image.
 
 *Alternative considered:* a bubblewrap environment written from scratch (no images at all). Rejected for now. It works on this host (bwrap and unprivileged overlayfs are available), but it means rewriting what Harbor's Docker/Podman environment already does (exec, upload/download, egress sidecar, compose overlays). Podman gives the same economics with far less new code.
 
@@ -47,18 +53,16 @@ It replaces how a trial's environment is assembled.
 - **Rust** (hcom, pytortch's native crates) gets one extra image, `fr-base/rust:<toolchain>`, if the toolchain can't be mounted. NixOS-built rustup toolchains don't run on Debian, so the toolchain lives in that image or in the store, installed from inside a container.
 - **Tasks** set `[environment] docker_image = "fr-base/cpu:1"`, and Harbor uses `docker-compose-prebuilt.yaml` with no build. `environment/Dockerfile` is dropped from the task template.
 
-### P3. Snapshot prepared on the host, mounted copy-on-write
+### P3. Snapshot prepared on the host, copied into the container at start
 `fr task materialize` already writes `environment/repo/` (`git archive`, excludes, stripping). It additionally runs the `fr-snapshot-init` steps on the host:
 1. drop beads sync remotes;
 2. `git init`, `gc.auto 0`;
 3. one `init` commit;
 4. expire the reflog, `gc`.
 
-The snapshot then holds one commit, no remotes, no hooks and no reflog. The leak probe runs against the directory.
+The snapshot then holds one commit, no remotes, no hooks and no reflog. The leak probe runs against the directory. Its check for `environment/Dockerfile` goes away.
 
-The trial mounts it at `/work/<repo>` with `:O`. The agent's edits and commits live in the container's overlay upper layer: visible to the verifier in the same container, discarded afterwards. The snapshot is never modified.
-
-*Fallback if `:O` can't pass through Harbor's compose:* Harbor's `upload_dir` copies the snapshot in at start. It's MBs, except pytortch at about 110 MB, so still cheap.
+**Decided by the spike (2026-11-20):** the trial mounts the snapshot **read-only** at `/opt/fr-snapshot`, and the container copies it to `/work/<repo>` at start: `cp -a` in the main service's command, or an exec in the subclass's `start()` with a ready marker. The copy lives in the container's writable layer: visible to the verifier, gone with the container. `:O` copy-on-write mounts were the first idea, but through compose and the Podman API they silently become read-write binds (`docs/spikes.md`, Podman section).
 
 ### P4. Dependency environments: shared per repo, a separate one only when it's worth it
 Environments are never built per task or per commit. Rebuild triggers, cheapest first:
@@ -139,4 +143,4 @@ Acceptance: a 10-task sequential campaign adds no image layers. Its disk after c
 
 - How Podman gets installed: Nix profile (`nix profile install nixpkgs#podman nixpkgs#podman-compose`) or the NixOS config (`virtualisation.podman.enable = true`, plus a tmpfiles rule for `/opt/fr-store`). This is the user's decision, being looked into as of 2026-11-19.
 - Compose frontend: podman-compose 1.x (drives the CLI, no socket) versus `podman compose` over the Podman socket. Pick whichever passes `:O` through; the spike decides.
-- P4's project-install option (a), (b) or (c).
+- ~~P4's project-install option~~ Decided 2026-11-20: (b), i.e. `UV_NO_SYNC=1` plus a generated `.pth` and console scripts for the project source (spike 2.4: `uv run` tried to build the project from PyPI and failed under the allowlist).

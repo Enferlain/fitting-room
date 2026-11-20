@@ -4,18 +4,18 @@ Read `design.md` first: its "Verified on this host" table records what is alread
 
 ## 1. Host setup (user decision first)
 
-- [ ] 1.1 Podman and a compose frontend installed permanently (user's choice: `nix profile install nixpkgs#podman nixpkgs#podman-compose`, or NixOS `virtualisation.podman.enable = true`, plus `/opt/fr-store` via tmpfiles if wanted). Verify `podman info` reports `rootless=true` and a graph root under `/home`, and that `podman compose version` (or `podman-compose version`) runs
-- [ ] 1.2 User config in `~/.config/containers/`: keep `policy.json`, `registries.conf` and `containers.conf` from the spike, and add `[network] pasta_options = ["--map-host-loopback", "169.254.1.2"]`. Drop the unused CDI spec in `~/.config/cdi/` (it points at a missing `/usr/bin/nvidia-cdi-hook`). Verify a container reaches a host test server on 127.0.0.1 through `host.containers.internal`
-- [ ] 1.3 Build `fr-base/cpu:1` with `podman build images/base-cpu`, and verify its size is about 1 GB and the build pulls only Debian, uv and Node
+- [x] 1.1 Podman and a compose frontend installed permanently (user's choice: `nix profile install nixpkgs#podman nixpkgs#podman-compose`, or NixOS `virtualisation.podman.enable = true`, plus `/opt/fr-store` via tmpfiles if wanted). Verify `podman info` reports `rootless=true` and a graph root under `/home`, and that `podman compose version` (or `podman-compose version`) runs
+- [x] 1.2 User config in `~/.config/containers/`: keep `policy.json`, `registries.conf` and `containers.conf` from the spike, and add `[network] pasta_options = ["--map-host-loopback", "169.254.1.2"]`. Drop the unused CDI spec in `~/.config/cdi/` (it points at a missing `/usr/bin/nvidia-cdi-hook`). Verify a container reaches a host test server on 127.0.0.1 through `host.containers.internal`
+- [x] 1.3 Build `fr-base/cpu:1` with `podman build images/base-cpu`, and verify its size is about 1 GB and the build pulls only Debian, uv and Node
 
 ## 2. Spike: one existing task end to end under Podman (decides the open questions)
 
-- [ ] 2.1 Harbor's Podman environment runs the hello-world task with oracle and nop (rewards 1 and 0), with the compose frontend from 1.1. Record which frontend Harbor resolved
-- [ ] 2.2 A `:O` bind mount and a read-only bind mount pass through Harbor (job `environment.mounts` or a compose overlay). Verify the container sees both, and that a write under the `:O` mount doesn't reach the host. If not, switch to the upload fallback (design P3) and record why
-- [ ] 2.3 `tasks/data-processing/label-busy-port` with `docker_image = "fr-base/cpu:1"` (no Dockerfile build), the snapshot mounted `:O` and the data-processing env from the store mounted read-only: oracle passes, nop fails. Record startup time and the disk delta after the trial
-- [ ] 2.4 The same task with one real harness (Claude Code + GLM 5.3 through Agent Vault) passes or fails on merit, with no infrastructure error. Check what `uv run` does against the read-only env, and pick design P4 option (a), (b) or (c)
-- [ ] 2.5 Egress allowlist under Podman: `spikes/netallow` (foundation spike 2.3) blocks `github.com` and allows the model endpoint
-- [ ] 2.6 GPU: `tasks/sd-scripts/responsive-ctrl-c` (or a minimal torch task) under Podman with the 3080 pinned: torch sees exactly the 3080. Record results 2.1–2.6 in `docs/spikes.md`, then user checkpoint: go or no-go on the rest
+- [x] 2.1 Harbor's Podman environment runs the hello-world task with oracle and nop (rewards 1 and 0), with the compose frontend from 1.1. Record which frontend Harbor resolved
+- [x] 2.2 (Result: `:O` does not pass through compose and the Podman API; it became read-write. Read-only binds work. Snapshot is copied in at start; see design P3.) A `:O` bind mount and a read-only bind mount pass through Harbor (job `environment.mounts` or a compose overlay). Verify the container sees both, and that a write under the `:O` mount doesn't reach the host. If not, switch to the upload fallback (design P3) and record why
+- [x] 2.3 `tasks/data-processing/label-busy-port` with `docker_image = "fr-base/cpu:1"` (no Dockerfile build), the snapshot mounted `:O` and the data-processing env from the store mounted read-only: oracle passes, nop fails. Record startup time and the disk delta after the trial
+- [x] 2.4 (Result: reward 1, no infra error. `uv run` failed building the project offline, so P4 option (b) chosen; see docs/spikes.md.) The same task with one real harness (Claude Code + GLM 5.3 through Agent Vault) passes or fails on merit, with no infrastructure error. Check what `uv run` does against the read-only env, and pick design P4 option (a), (b) or (c)
+- [x] 2.5 Egress allowlist under Podman: `spikes/netallow` (foundation spike 2.3) blocks `github.com` and allows the model endpoint
+- [x] 2.6 GPU: `tasks/sd-scripts/responsive-ctrl-c` (or a minimal torch task) under Podman with the 3080 pinned: torch sees exactly the 3080. Record results 2.1–2.6 in `docs/spikes.md`, then user checkpoint: go or no-go on the rest
 
 ## 3. Store and environments
 

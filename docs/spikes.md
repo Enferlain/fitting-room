@@ -88,3 +88,25 @@ Notes:
 - Hermes detects WSL from the kernel and tells the model the Windows drives are under `/mnt/c`. They aren't mounted in the sandbox; the model may waste a call looking. Same kernel string for every harness, so not a fairness issue, but it is noise.
 - The bundled skill list (58 skills) is in Hermes's system prompt by default. That is stock Hermes; toolkits (task 4.6) decide what else is added.
 - GLM through Hermes passed the hello task on 2026-11-18 (see docs/harnesses.md).
+
+## Podman (change `podman-trial-environments`, tasks 1–2), 2026-11-20
+
+Podman 5.8.9 rootless (NixOS `virtualisation.podman`), storage `~/.local/share/containers/storage` on the NixOS disk (`D:\WSL\NixOS`). Base image `localhost/fr-base/cpu:1` built with `podman build images/base-cpu`: 704 MB, 72 s.
+
+| Check | Result |
+|---|---|
+| hello task, oracle / nop (2.1) | 1 / 0 |
+| `label-busy-port` with `docker_image = localhost/fr-base/cpu:1` (no build), snapshot copied in, data-processing shared env mounted read-only (2.3) | oracle 1, nop 0 (fails on the real bug); snapshot checksum unchanged; trial 25 s (environment setup 2.5–6.6 s, verifier 7.5 s); no containers, networks or volumes left |
+| egress allowlist, `spikes/netallow` (2.5) | `github.com` blocked, `pypi.org` reachable, reward 1 |
+| GPU (2.6), `spikes/gpu` with `gpus = 0` + overlay (`devices: [/dev/dxg]`, `/usr/lib/wsl:ro`, `LD_LIBRARY_PATH`, `CUDA_VISIBLE_DEVICES=<3080 UUID>`) | CUDA sees exactly one device, the RTX 3080; reward 1 |
+| data-processing shared env (`uv venv --relocatable` + `uv sync --frozen --no-install-project`, `UV_LINK_MODE=hardlink`) | 9 s including the interpreter download; 3,217 of 3,292 files hardlinked into `~/.cache/uv`; entry-point scripts relocatable, so the env mounts at `/opt/venv` |
+
+What had to change, and why:
+
+1. **PATH without `/mnt/*` for every Podman call.** Each `podman` invocation probes PATH for about ten OCI runtimes; with WSL's appended Windows PATH (about 40 entries on `/mnt/c`) that took ~1 s per call (`podman version` 971 ms → 38 ms with a clean PATH). Harbor makes many calls per phase, so this was most of the 90–130 s per trivial trial.
+2. **Compose frontend: `podman compose` with docker-compose as provider**, over the Podman socket (`podman.socket` is enabled). podman-compose 1.5 lacks `cp` and `exec --no-TTY`, which Harbor's egress sidecar needs. The user's global `PODMAN_COMPOSE_PROVIDER` (podman-compose, set to keep Docker Desktop's compose away) stays; fitting-room sets the provider only for its own Harbor runs, using nixpkgs' docker-compose (unrelated to Docker Desktop).
+3. **`environment.delete = false`.** With delete on, Harbor runs `compose down --rmi local`, which through Podman removed the shared prebuilt base image after the first trial. Plain `down` still removes containers and networks.
+4. **`init: true` on the main service.** `sleep infinity` as PID 1 ignores SIGTERM, so every `down` waited the 10 s stop timeout.
+5. **`:O` (copy-on-write) bind mounts do not survive the compose → Podman API path.** They became plain read-write binds: the oracle wrote its fix into the host snapshot, and the following nop trial scored 1 on the fixed code (files on the host ended up owned by a container UID; removed with `podman unshare rm -rf`). Plain `:O` works with `podman run`, not through compose. **Decision:** mount the snapshot read-only at `/opt/fr-snapshot` and copy it into the container's writable layer at start (`cp -a`, about 11 MB here, 110 MB for pytortch). Read-only binds are honoured (writes to the snapshot and the env fail with "Read-only file system").
+
+**2.4, real harness:** Claude Code 2.1.263 + GLM 5.3 Flash (effort high) through Agent Vault on `label-busy-port`: reward 1 (all three checks pass), environment setup 3 s, agent setup (per-trial Claude Code install) 21 s, agent 603 s (hit the 600 s agent timeout after the fix was in; 1.29 M input / 15.7 k output tokens), verifier 9 s. The agent's first `uv run python` failed: uv tried to build and install the project itself (`hatchling` from PyPI), and the task's allowlist blocks PyPI. The agent switched to `PYTHONPATH=/work/data-processing/src /opt/venv/bin/python -m pytest`. Decision for design P4: option (b), i.e. `UV_NO_SYNC=1` in the container plus a generated `.pth` (and console scripts) for the project's own source, so `uv run` works against the read-only env without network.
