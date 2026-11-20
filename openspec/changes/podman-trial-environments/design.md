@@ -60,13 +60,17 @@ The trial mounts it at `/work/<repo>` with `:O`. The agent's edits and commits l
 
 *Fallback if `:O` can't pass through Harbor's compose:* Harbor's `upload_dir` copies the snapshot in at start. It's MBs, except pytortch at about 110 MB, so still cheap.
 
-### P4. Dependency environments: a store keyed by lockfile, hardlinked from the uv cache
-- **Store layout:** `$FR_STORE/envs/<repo>/<key>/`, where `key = sha256(uv.lock + pyproject.toml + python + sync args)[:12]`. Many commits share a lockfile, so most tasks of a repo share one env.
-- **Creation:** `fr env ensure <task>`, also run by `fr run` before a campaign.
-  1. Extract `pyproject.toml` and `uv.lock` at the task's `start_commit` into a temp dir.
-  2. Run `UV_PROJECT_ENVIRONMENT=<dir> UV_LINK_MODE=hardlink uv sync --frozen --no-install-project <args>`.
+### P4. Dependency environments: shared per repo, a separate one only when it's worth it
+Environments are never built per task or per commit. Rebuild triggers, cheapest first:
 
-  The host's `~/.cache/uv` is on the same filesystem, so files are hardlinks: seconds, about 0 extra disk, and downloads happen only for wheels the cache lacks. Free-threaded opencv is already built in the cache.
+1. **Shared env per repo and interpreter (default).** Each repo has one env in the store, synced from a recent lockfile, like the old images' "warm" venv but stored once on the WSL disk. Every task of that repo uses it. Nothing is created when a task is added.
+2. **A lock-specific env only when needed.** `fr env check <task>` compares the task commit's `uv.lock` with the shared env's lock (package name → version sets) and reports the difference. If they're identical, the task uses the shared env. If they differ, the task still uses the shared env **if its validation passes on it** (oracle 5/5, nop 0, the verifier's own test command). Only when validation fails does the task get its own env, recorded in `task.toml` as `[metadata] env = "lock"`. A different interpreter (e.g. the 3.13 sd-scripts commits) always needs its own env.
+3. **A lock-specific env is keyed by its inputs, not the commit:** `sha256(uv.lock + pyproject.toml + python + sync args)[:12]` under `$FR_STORE/envs/<repo>/<key>/`. Tasks that need the same lock share it.
+
+Creating any env: extract `pyproject.toml` and `uv.lock` at the relevant commit into a temp dir, then run `UV_PROJECT_ENVIRONMENT=<dir> UV_LINK_MODE=hardlink uv sync --frozen --no-install-project <args>`. The host's `~/.cache/uv` is on the same filesystem, so files are hardlinks: seconds, about 0 extra disk, downloads only for wheels the cache lacks (free-threaded opencv is already built there). Shared envs are refreshed only by an explicit `fr env refresh <repo>`, which re-validates the tasks that use them.
+
+*Considered and rejected:* syncing the difference into a copy-on-write copy of the shared env at every trial start. It's correct, but it pays the sync on every trial and repeat, needs the uv cache inside the sandbox, and needs network access for missing wheels.
+
 - **Interpreters:** `$FR_STORE/python/` (`UV_PYTHON_INSTALL_DIR` during creation), so the store doesn't depend on the user's own `uv python` upgrades. The interpreter version is recorded per env.
 - **Mounts:** each env and its interpreter are mounted read-only at **the same absolute path** as on the host. A venv's `bin/` shebangs and `pyvenv.cfg` hold absolute paths. The container gets `VIRTUAL_ENV`, `UV_PROJECT_ENVIRONMENT` and `PATH` pointing at it.
 - **Store path:** `$FR_STORE` defaults to `~/.local/share/fitting-room/store`. The path shows up inside sandboxes, revealing the username and nothing else. A neutral `/opt/fr-store` (a NixOS `systemd.tmpfiles` rule owned by `imi`) is preferred if the user changes the NixOS config anyway for Podman. It must stay on the same filesystem as `~/.cache/uv` for hardlinks.
@@ -88,11 +92,9 @@ Harbor reinstalls the harness in every trial (no install cache). Hermes takes ab
 - **Version check:** each harness's `--version` output is checked against the pin at trial start, as now.
 
 ### P6. Toolkits become store mounts
-`dev-stack`'s bd, openspec and codebase-memory currently come from `fr-toolkit/dev-stack:1` through `dockerfile_append`. They move to `$FR_STORE/toolkits/dev-stack/<digest>/`, mounted read-only on PATH.
+`dev-stack` is bd and openspec. codebase-memory was removed on 2026-11-20 (user): its index writes far too much for what the benchmark needs. The two binaries come from `fr-toolkit/dev-stack:1` through `dockerfile_append` today. They move to `$FR_STORE/toolkits/dev-stack/<digest>/`, mounted read-only on PATH.
 
-Per-task setup has two parts:
-- `bd init --from-jsonl` and the codebase-memory index are produced **once per task** at materialize time, into a toolkit-state dir mounted `:O`;
-- they no longer run in every trial (indexing big repos per trial is slow).
+`bd init --from-jsonl --non-interactive --skip-hooks --skip-agents` stays a per-trial setup step. It's small and fast, and it writes into the repo's `:O` overlay, so it vanishes with the trial. MCP and skill items stay supported for future toolkits.
 
 `toolkit.toml` replaces `dockerfile_append` with a `store` section; the schema change is in task 5.x.
 

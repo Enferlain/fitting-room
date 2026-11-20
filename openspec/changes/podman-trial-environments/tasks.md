@@ -20,7 +20,8 @@ Read `design.md` first: its "Verified on this host" table records what is alread
 ## 3. Store and environments
 
 - [ ] 3.1 `src/fitting_room/store.py`: `$FR_STORE` resolution (default `~/.local/share/fitting-room/store`, or `/opt/fr-store`), a same-filesystem check against `~/.cache/uv`, and a refusal for paths under `/mnt/`. Unit tests
-- [ ] 3.2 `fr env ensure <task|repo@commit>`: lock-keyed env (design P4) with `UV_LINK_MODE=hardlink`, interpreter in `$FR_STORE/python`, key and interpreter version written to `env.json`. Verify a second task with the same lock reuses the env, a different lock makes a new one, and `du` of a fresh sd-scripts env shows it is mostly hardlinks
+- [ ] 3.2 Shared env per repo and interpreter (design P4.1): `fr env ensure <repo>` with `UV_LINK_MODE=hardlink`, interpreter in `$FR_STORE/python`, lock and interpreter version written to `env.json`. Verify that a fresh sd-scripts env is mostly hardlinks into `~/.cache/uv` (`du` on the store versus the env's apparent size) and that it's created without downloads
+- [ ] 3.2b `fr env check <task>` (P4.2): diff the task commit's lock against the shared env's lock and report it. With `[metadata] env = "lock"`, create the lock-keyed env (P4.3). Verify on a fixture: identical lock → shared; different lock with passing validation → shared; `env = "lock"` → a keyed env reused by a second task with the same lock
 - [ ] 3.3 Rust: registry and per-repo target cache in the store (P4). Toolchain in an `fr-base/rust` image or in the store, installed from a container. Verify hcom's `cargo test --workspace --no-run` runs offline in a trial and a second trial reuses the target cache
 - [ ] 3.4 pytortch: `stage0/.venv` linking the sd-scripts env without Triton (`isolate_python.py`), plus the native build into the target cache (replaces `images/repo-pytortch/fr-pytortch-setup`). Verify the `cubecl_torch/testing` subset from `images/README.md` passes on the 3080 (626 passed / 7 known failures)
 - [ ] 3.5 `fr store gc`: list and remove envs and harness installs no task or run config references. Verify on a fixture store
@@ -35,7 +36,7 @@ Read `design.md` first: its "Verified on this host" table records what is alread
 
 - [ ] 5.1 `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/` from a throwaway base container (npm prefix for codex, claude-code and opencode; omp binary; Hermes at the pinned SHA, without browser extras)
 - [ ] 5.2 Adapters' `install()` uses the mounted install (verify `--version` against the pin), for all five harnesses. Overlaps foundation 4.2: do the thin pinned subclasses for codex, claude-code and opencode here. Verify each harness's smoke task starts in under 30 s with no network install
-- [ ] 5.3 Toolkits: `toolkit.toml` loses `dockerfile_append` and gains a store install. `dev-stack` binaries in `$FR_STORE/toolkits/dev-stack/<digest>/`. Per-task bd and codebase-memory state is made at materialize time and mounted `:O`. Re-run the toolkit smoke (`smoke-toolkit-glm`) with Claude Code, omp and Hermes: same results as on Docker
+- [ ] 5.3 Toolkits: `toolkit.toml` loses `dockerfile_append` and gains a store install. `dev-stack` binaries in `$FR_STORE/toolkits/dev-stack/<digest>/`. `bd init` stays per trial (into the repo overlay). Rework `spikes/toolkit-check` to bd and openspec only, and re-run it with Claude Code, omp and Hermes
 
 ## 6. Tasks, template, docs, cleanup
 

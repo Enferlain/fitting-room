@@ -42,8 +42,10 @@ Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude m
 
 ## Toolkits (task 4.6)
 
-`dev-stack` (`configs/toolkits/dev-stack/`): bd and openspec on PATH, the codebase-memory
-MCP server (stdio) and its skill. `fr run` stages a hardlinked copy of each task with the
+`dev-stack` (`configs/toolkits/dev-stack/`): bd and openspec on PATH. Until 2026-11-20 it
+also carried the codebase-memory MCP server and skill; they were removed because indexing
+writes far too much for what the benchmark needs. The MCP and skill wiring below stays
+for other toolkits, and the smoke results were recorded with codebase-memory. `fr run` stages a hardlinked copy of each task with the
 toolkit's image layer appended; MCP servers and skills go on Harbor's agent config and
 each Harbor agent registers them in its harness's own config. `hook` items are refused
 for every harness (no shared mechanism yet), so `bd prime` is not part of `dev-stack`.

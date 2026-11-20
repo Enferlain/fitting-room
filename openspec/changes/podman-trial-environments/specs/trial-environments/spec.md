@@ -27,12 +27,16 @@ Images, the store, snapshots and results SHALL live on the WSL distro's disk (D:
 - **WHEN** `fr doctor` (or the equivalent check) runs
 - **THEN** it reports Podman's graph root, `$FR_STORE`, `tasks/` and `results/` on the WSL filesystem, and fails if any of them is under `/mnt/c`
 
-### Requirement: Exact dependencies per task commit
-A Python task's environment SHALL be synced from the `uv.lock` at the task's `start_commit`, not from another commit's lockfile. The environment key and interpreter version SHALL be recorded in the trial's `fitting_room.json`.
+### Requirement: Environments are reused, not rebuilt per task
+A task SHALL use its repo's shared environment unless its lockfile differs AND its validation fails on the shared environment, or it needs a different interpreter. Only then SHALL a separate environment be created, keyed by lockfile, interpreter and sync arguments (never by commit or task). The environment used and its interpreter version SHALL be recorded in each trial's `fitting_room.json`.
 
-#### Scenario: Two commits with different locks
-- **WHEN** two tasks of the same repo have different `uv.lock` contents at their start commits
-- **THEN** they run against two different environments, each matching its own lockfile, and both keys appear in their trials' records
+#### Scenario: Lock differs but validation passes
+- **WHEN** a task's commit has a different `uv.lock` from the shared environment but its oracle passes 5/5 and nop fails on the shared environment
+- **THEN** the task uses the shared environment and no new environment is created
+
+#### Scenario: Validation needs the task's own lock
+- **WHEN** a task's oracle fails on the shared environment because of a dependency difference
+- **THEN** the task is marked `env = "lock"`, gets an environment keyed by its lockfile, and a second task with the same lockfile reuses that environment
 
 ### Requirement: GPU access and pinning under Podman
 A GPU task SHALL get the WSL GPU device and driver libraries, with `CUDA_VISIBLE_DEVICES` set to the campaign's task GPU UUID. Non-GPU tasks SHALL get no GPU device.
