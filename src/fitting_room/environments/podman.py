@@ -33,6 +33,7 @@ class FrPodmanOptions(PodmanOptions):
     task_gpu: str | None = None
     harness_path: Path | None = None
     toolkit_path: Path | None = None
+    toolkit_beads: bool = False
 
 
 def task_repo(task: Path) -> str | None:
@@ -131,6 +132,18 @@ def trial_service(
         if install is not None:
             bind(install)
             prepend_path(install / "bin")
+    if options.toolkit_beads and snapshot is not None:
+        # The JSONL export is the seed. Dolt writes only to the copied repository.
+        setup.append(
+            r"""
+if [ -f .beads/issues.jsonl ]; then
+    issue=$(jq -r 'first(inputs | .id // empty)' -n .beads/issues.jsonl)
+    prefix=${issue%-*}
+    bd init --from-jsonl --non-interactive --skip-hooks --skip-agents --quiet \
+        ${prefix:+--prefix "$prefix"}
+fi
+""".strip()
+        )
     validate_gpu(gpus, options.task_gpu)
     if gpus:
         # The Podman compatibility API treats the short bind form differently
@@ -161,6 +174,7 @@ class FrPodmanEnvironment(PodmanEnvironment):
         task_gpu: str | None = None,
         harness_path: str | None = None,
         toolkit_path: str | None = None,
+        toolkit_beads: bool = False,
         **kwargs,
     ) -> None:
         if task_env_config.docker_image not in BASE_IMAGE_NAMES:
@@ -171,7 +185,9 @@ class FrPodmanEnvironment(PodmanEnvironment):
             task_gpu=task_gpu,
             harness_path=harness_path,
             toolkit_path=toolkit_path,
+            toolkit_beads=toolkit_beads,
         )
+        self.harness_path = options.harness_path
         if (environment_dir / "Dockerfile").exists():
             raise StoreError("Remove environment/Dockerfile for a prebuilt Podman task")
         repo = task_repo(environment_dir.parent)
@@ -196,7 +212,25 @@ class FrPodmanEnvironment(PodmanEnvironment):
             options,
             self._effective_gpus,
         )
-        overlay = trial_paths.trial_dir / f"{component(session_id)}.compose.json"
+        if task_env_config.workdir:
+            service["working_dir"] = task_env_config.workdir
+        stem = component(session_id)
+        # Debian's /etc/profile replaces PATH in login shells (including Codex's
+        # exec tool). Restore the trial paths there, too.
+        path = service["environment"]["PATH"]
+        if path != SYSTEM_PATH:
+            profile = trial_paths.trial_dir / f"{stem}.profile.sh"
+            profile.write_text(f"export PATH={shlex.quote(path)}\n")
+            service["volumes"].append(
+                {
+                    "type": "bind",
+                    "source": str(profile.resolve()),
+                    "target": "/etc/profile.d/90-fitting-room-path.sh",
+                    "read_only": True,
+                    "bind": {"create_host_path": False},
+                }
+            )
+        overlay = trial_paths.trial_dir / f"{stem}.compose.json"
         overlay.write_text(json.dumps({"services": {"main": service}}, indent=2) + "\n")
         self.extra_docker_compose_paths.append(overlay)
 

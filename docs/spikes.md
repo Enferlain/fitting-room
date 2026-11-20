@@ -126,3 +126,49 @@ What had to change, and why:
 ### sd-scripts composite environment (2026-11-20)
 
 `configs/repos/sd-scripts.toml`: `kind = "python+rust"`, `rust = "1.99.1"`, `rust_manifests = [pliron_candidate/native/Cargo.toml]`. `fr env ensure sd-scripts` reused the existing Python venv (same key) and warmed the Rust half in 42 s (toolchain, `cargo fetch --locked`, `cargo test --no-run` into the shared target). `spikes/sd-rust-check` at N7's commit (`5a737c27`), agent network allowlist empty: `cargo test --locked --offline` on the Pliron crate passes and the venv imports torch 2.14.1+cu130 and xdsl; oracle 1, trial 31 s (`configs/campaigns/spike-sd-rust.toml`).
+
+### Podman section 5: harness and toolkit stores (2026-11-20)
+
+`fr harness ensure <name> <version>` used the prebuilt Debian base to install npm
+prefixes for Codex, Claude Code and OpenCode, the standalone release binary for
+Oh My Pi, and the uv-locked Hermes CLI environment at the pinned SHA. All five
+binaries reported the expected versions in separate read-only, network-disabled
+Podman containers. The Hermes check paired its release banner with the full
+checkout SHA. A fresh Oh My Pi install verified the published release checksum
+and completed in 5.2 s. `dev-stack` similarly verified bd 1.3.2 and OpenSpec
+1.15.0 offline. A fixture confirmed that store GC keeps the referenced toolkit
+digest and removes obsolete managed installs.
+
+Warm Harbor trial times from environment setup start to agent execution start:
+
+| Harness | Smoke task | Startup | Reward |
+|---|---|---:|---:|
+| Codex 0.163.0 + Qwen3.5-9B | `hello` | 1.79 s | 1 |
+| Claude Code 2.1.263 + GLM 5.3 Flash | `toolkit-check` | 7.63 s | 1 |
+| Oh My Pi 18.12.6 + GLM 5.3 Flash | `toolkit-check` | 7.71 s | 1 |
+| Hermes 2026.9.24 + GLM 5.3 Flash | `toolkit-check` | 7.78 s | 1 |
+| OpenCode 2.2.6 + Qwen3.5-9B | `toolkit-check` | 9.37 s | 1 |
+
+The optional Codex toolkit run caught Debian's login shell resetting `PATH`. A
+trial-local profile now restores the same path as the Compose environment.
+Codex's rerun on the toolkit task scored 1 and started in 7.60 s. The optional
+Hermes + Qwen3.5-9B run used both tools but scored 0 because it listed changes
+instead of specs. The oracle and all three GLM toolkit runs passed both checks.
+With `toolkit = "none"`, Claude Code could see neither tool and scored 0.
+Local logs are under `work/podman-section-5/results/`.
+
+To recreate the toolkit snapshot on a fresh checkout, materialize it from the
+local hermes-agora checkout, then initialize its single commit. Section 6 will
+move the initialization into the materializer.
+
+```bash
+fr task materialize spikes/toolkit-check
+(
+    cd spikes/toolkit-check/environment/repo
+    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
+    GIT_AUTHOR_NAME=benchmark GIT_AUTHOR_EMAIL=benchmark@example.invalid \
+    GIT_COMMITTER_NAME=benchmark GIT_COMMITTER_EMAIL=benchmark@example.invalid \
+        ../../../../images/common/fr-snapshot-init
+)
+fr run smoke-toolkit-glm
+```

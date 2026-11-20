@@ -34,9 +34,9 @@ Read `design.md` first: its "Verified on this host" table records what is alread
 
 ## 5. Harness and toolkit stores
 
-- [ ] 5.1 `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/` from a throwaway base container (npm prefix for codex, claude-code and opencode; omp binary; Hermes at the pinned SHA, without browser extras). Write `harness.json` with `harness` and `version` for store GC. Have `fr run` provision the pinned harness before Harbor
-- [ ] 5.2 Adapters' `install()` uses the mounted install (verify `--version` against the pin), for all five harnesses. Overlaps foundation 4.2: do the thin pinned subclasses for codex, claude-code and opencode here. Verify each harness's smoke task starts in under 30 s with no network install
-- [ ] 5.3 Toolkits: `toolkit.toml` loses `dockerfile_append` and gains a store install. `dev-stack` binaries in `$FR_STORE/toolkits/dev-stack/<digest>/`. `bd init` stays per trial (into the repo overlay). Rework `spikes/toolkit-check` to bd and openspec only, and re-run it with Claude Code, omp and Hermes
+- [x] 5.1 `fr harness ensure <name> <version>` installs into `$FR_STORE/harness/<name>/<version>/` from a throwaway base container (npm prefix for codex, claude-code and opencode; omp binary; Hermes at the pinned SHA, without browser extras). Write `harness.json` with `harness` and `version` for store GC. Have `fr run` provision the pinned harness before Harbor
+- [x] 5.2 Adapters' `install()` uses the mounted install (verify `--version` against the pin), for all five harnesses. Overlaps foundation 4.2: do the thin pinned subclasses for codex, claude-code and opencode here. Verify each harness's smoke task starts in under 30 s with no network install
+- [x] 5.3 Toolkits: `toolkit.toml` loses `dockerfile_append` and gains a store install. `dev-stack` binaries in `$FR_STORE/toolkits/dev-stack/<digest>/`. `bd init` stays per trial (into the repo overlay). Rework `spikes/toolkit-check` to bd and openspec only, and re-run it with Claude Code, omp and Hermes
 
 ## 6. Tasks, template, docs, cleanup
 

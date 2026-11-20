@@ -223,6 +223,24 @@ store_app = typer.Typer(help="Manage the benchmark store.")
 app.add_typer(store_app, name="store")
 
 
+harness_app = typer.Typer(help="Provision pinned harness installations.")
+app.add_typer(harness_app, name="harness")
+
+
+@harness_app.command("ensure")
+def harness_ensure(name: str, version: str) -> None:
+    """Install a harness once in the benchmark store."""
+    from fitting_room.harness_store import ensure_harness
+    from fitting_room.store import store_path
+
+    try:
+        path = ensure_harness(name, version, store_path())
+    except (OSError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(2) from None
+    typer.echo(path)
+
+
 @env_app.command("ensure")
 def env_ensure(
     repo: str,
@@ -270,7 +288,7 @@ def store_gc(
     repo_root: Path = typer.Option(Path("."), help="fitting-room repo root"),
     apply: bool = typer.Option(False, "--apply", help="Remove the listed entries"),
 ) -> None:
-    """Preview obsolete repo environments and unused harness installs."""
+    """Preview obsolete environments and unused harness or toolkit installs."""
     from fitting_room.store import store_path
     from fitting_room.store_gc import collect_store
     from fitting_room.tasks.materialize import MaterializeError

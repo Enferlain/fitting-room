@@ -9,6 +9,7 @@ from fitting_room.cli import app
 from fitting_room.config import ConfigRoot
 from fitting_room.store import StoreError, check_uv_filesystem, store_path
 from fitting_room.store_gc import collect_store
+from fitting_room.toolkits import load_toolkit
 
 
 @pytest.fixture
@@ -109,6 +110,31 @@ def test_gc_only_applies_to_stale_managed_entries(tmp_path, benchmark):
     assert collect_store(store, root, apply=True) == [old, old_pin]
     assert all(path.exists() for path in (active, referenced, foreign, unmanaged))
     assert all(not path.exists() for path in (old, old_pin))
+
+
+def test_gc_preserves_referenced_toolkit_digest(tmp_path):
+    root = ConfigRoot(tmp_path / "configs")
+    root.runs.mkdir(parents=True)
+    (root.arms / "stock").mkdir(parents=True)
+    config = root.toolkits / "dev-stack"
+    config.mkdir(parents=True)
+    (config / "toolkit.toml").write_text('[store]\nbd = "1.3.2"\n')
+    (root.runs / "run.toml").write_text('harness = "oracle"\ntoolkit = "dev-stack"\n')
+    store = tmp_path / "store"
+    tree = store / "toolkits/dev-stack"
+    current = tree / load_toolkit(root.toolkits, "dev-stack").store_digest()
+    old = tree / ("0" * 64)
+    unmanaged = tree / ("1" * 64)
+    for entry in (current, old, unmanaged):
+        entry.mkdir(parents=True)
+    for entry in (current, old):
+        (entry / "toolkit.digest").write_text(entry.name)
+
+    (config / "README.md").write_text("Documentation is not an installation input.")
+    assert collect_store(store, root) == [old]
+    assert old.is_dir()
+    assert collect_store(store, root, apply=True) == [old]
+    assert current.is_dir() and unmanaged.is_dir() and not old.exists()
 
 
 def test_failed_store_cleanup_keeps_the_provisioning_error(tmp_path, monkeypatch):

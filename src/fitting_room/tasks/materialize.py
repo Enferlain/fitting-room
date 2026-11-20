@@ -2,10 +2,9 @@
 
 `environment/repo/` is `git archive <start_commit>` of the local repo named in the task's
 `[metadata]` (`repo`, `start_commit`). It is gitignored and rebuilt on demand. The task
-Dockerfile re-inits it as one fresh commit, so the image has no later history, refs,
-remotes or hooks. A small record of what was materialized sits next to it
-(`environment/.materialized.json`), outside the `COPY repo/` path so it never reaches
-the image.
+Dockerfile re-inits it as one fresh commit for legacy tasks. A prebuilt Podman task
+needs the fresh snapshot initialized on the host. A small record of what was
+materialized sits next to it (`environment/.materialized.json`).
 
 Per-repo excludes (generated evidence that floods tools) come from
 ``configs/repos/<repo>.toml`` (``exclude`` = glob patterns on repo-relative paths); a
@@ -24,6 +23,8 @@ import tomllib
 from fnmatch import fnmatch
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+
+from fitting_room.podman_host import BASE_IMAGE_NAMES
 
 REPOS_DIR_ENV = "FR_REPOS_DIR"
 DEFAULT_REPOS_DIR = Path("~/Projects")
@@ -98,25 +99,27 @@ def _inside_repo(m: tarfile.TarInfo) -> bool:
     return True
 
 
-def materialize(task_dir: Path, *, repo: str | None = None, commit: str | None = None) -> Materialized:
+def materialize(
+    task_dir: Path, *, repo: str | None = None, commit: str | None = None
+) -> Materialized:
     """Replace ``<task>/environment/repo/`` with the repo at the task's start commit."""
     if repo is None or commit is None:
         repo, commit = task_source(task_dir)
     src = repo_path(repo)
     full = str(_git(src, "rev-parse", "--verify", f"{commit}^{{commit}}")).strip()
     env = task_dir / "environment"
-    if not (env / "Dockerfile").exists():
-        raise MaterializeError(f"{env}/Dockerfile missing: not a task directory")
+    task_config = task_dir / "task.toml"
+    config = tomllib.loads(task_config.read_text()) if task_config.is_file() else {}
+    image = config.get("environment", {}).get("docker_image")
+    if not (env / "Dockerfile").is_file() and image not in BASE_IMAGE_NAMES:
+        raise MaterializeError(f"{task_dir} needs a Dockerfile or the prebuilt Podman base image")
     dest = env / "repo"
     if dest.exists():
         shutil.rmtree(dest)  # always a generated, gitignored snapshot
     dest.mkdir(parents=True)
     archive = _git(src, "archive", "--format=tar", full, binary=True)
-    meta = {}
-    if (task_dir / "task.toml").exists():
-        meta = tomllib.loads((task_dir / "task.toml").read_text()).get("metadata", {})
     excludes = repo_excludes(repo)
-    includes = list(meta.get("snapshot_include", []))
+    includes = list(config.get("metadata", {}).get("snapshot_include", []))
     excluded = 0
     stripped: list[str] = []
     files = 0

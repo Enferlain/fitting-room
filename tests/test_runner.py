@@ -474,3 +474,58 @@ def test_pytortch_uses_read_only_llvm_seed_at_warmed_path(tmp_path):
         for mount in service["volumes"]
     )
     assert setup[-1] == "cubecl_torch/native/build.sh"
+
+
+def test_podman_runner_provisions_harness_and_toolkit_before_harbor(tmp_path, monkeypatch):
+    from fitting_room import runner
+    from fitting_room.podman_host import BASE_IMAGE
+
+    root = ROOT(tmp_path)
+    dev_stack = root.toolkits / "dev-stack"
+    dev_stack.mkdir(parents=True)
+    (dev_stack / "toolkit.toml").write_text('[store]\nbd = "1.3.2"\n')
+    run = _local_run("codex", "0.163.0", "dev-stack")
+    campaign = make_campaign(tmp_path, [run], repeats=1)
+    for task in campaign.task_dirs:
+        (task / "task.toml").write_text(f'[environment]\ndocker_image = "{BASE_IMAGE}"\n')
+    store = tmp_path / "store"
+    harness_path = store / "harness/codex/0.163.0"
+    toolkit_path = store / "toolkits/dev-stack/digest"
+    steps = []
+
+    def ensure_harness(name, version, directory):
+        assert (name, version, directory) == ("codex", "0.163.0", store)
+        steps.append("harness")
+        return harness_path
+
+    def ensure_toolkit(toolkit, directory):
+        assert (toolkit.name, toolkit.store, directory) == ("dev-stack", {"bd": "1.3.2"}, store)
+        steps.append("toolkit")
+        return toolkit_path
+
+    def invoke(config, env):
+        steps.append("harbor")
+        job = json.loads(config.read_text())
+        assert job["agents"][0]["import_path"] == "fitting_room.adapters.pinned:FrCodex"
+        assert job["environment"]["kwargs"] == {
+            "harness_path": str(harness_path),
+            "toolkit_path": str(toolkit_path),
+            "toolkit_beads": True,
+            "repo_environments": {},
+            "task_gpu": None,
+        }
+        return 0
+
+    monkeypatch.setattr(runner, "podman_host_env", lambda: {})
+    monkeypatch.setattr(runner, "check_storage", lambda *_: {"FR_STORE": store})
+    monkeypatch.setattr(runner, "ensure_harness", ensure_harness)
+    monkeypatch.setattr(runner, "ensure_toolkit", ensure_toolkit)
+    run_campaign(
+        campaign,
+        tmp_path / "results",
+        root,
+        invoke=invoke,
+        now=NOW,
+        endpoint_check=lambda _: True,
+    )
+    assert steps == ["harness", "toolkit", "harbor"]

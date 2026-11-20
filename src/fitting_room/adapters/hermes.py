@@ -28,6 +28,9 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 from pydantic import Field
 
+from fitting_room.adapters.pinned import PinnedInstall
+from fitting_room.environments.podman import FrPodmanEnvironment
+
 # The installer from main assumes main's layout; use the one from the pinned commit.
 INSTALL_SH = "https://raw.githubusercontent.com/NousResearch/hermes-agent/{sha}/scripts/install.sh"
 _SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -40,7 +43,9 @@ class FrHermesOptions(HermesOptions):
     )
 
 
-class FrHermes(Hermes):
+class FrHermes(PinnedInstall, Hermes):
+    store_harness_name = "hermes"
+
     capabilities = AgentCapabilities(
         base_url=True,
         reasoning_effort=True,
@@ -57,6 +62,9 @@ class FrHermes(Hermes):
         return self.options.reasoning_effort
 
     async def install(self, environment: BaseEnvironment) -> None:
+        if isinstance(environment, FrPodmanEnvironment):
+            await super().install(environment)
+            return
         if not (self._version and _SHA.match(self._version)):
             raise ValueError("pin Hermes by full commit SHA (harness_version)")
         await self.ensure_system_dependencies(environment, ("curl", "git", "ripgrep", "xz"))

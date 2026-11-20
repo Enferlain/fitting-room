@@ -38,10 +38,15 @@ def make_task(tmp_path, commit):
     return task
 
 
-def test_snapshot_is_start_commit_without_secrets_or_history(tmp_path, repo, monkeypatch):
+@pytest.mark.parametrize("prebuilt", [False, True])
+def test_snapshot_is_start_commit_without_secrets_or_history(tmp_path, repo, monkeypatch, prebuilt):
     r, first = repo
     monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
     task = make_task(tmp_path, first[:8])
+    if prebuilt:
+        (task / "environment" / "Dockerfile").unlink()
+        with (task / "task.toml").open("a") as cfg:
+            cfg.write('[environment]\ndocker_image = "fr-base/cpu:1"\n')
     (task / "environment" / "repo").mkdir()
     (task / "environment" / "repo" / "stale.txt").write_text("old")
     m = materialize(task)

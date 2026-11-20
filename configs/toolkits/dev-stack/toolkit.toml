@@ -3,18 +3,12 @@
 name = "dev-stack"
 description = "bd and openspec inside the sandbox"
 
-# Appended to each task's Dockerfile (fr run stages a hardlinked copy of the task).
-# The layer copies the tools in and initialises bd from the snapshot's issues
-# (images/toolkits/dev-stack/setup.sh). codebase-memory was removed 2026-11-20 (user):
-# indexing writes far too much for what the benchmark needs. The MCP and skill item kinds
-# stay supported for other toolkits.
-dockerfile_append = """
-COPY --from=fr-toolkit/dev-stack:1 /opt/fr-toolkit /opt/fr-toolkit
-RUN /opt/fr-toolkit/setup.sh
-"""
-
 # Optional instruction text added through the arm mechanism when announce = true.
 announce = false
+
+[store]
+bd = "1.3.2"
+openspec = "1.15.0"
 
 [[items]]
 name = "bd"

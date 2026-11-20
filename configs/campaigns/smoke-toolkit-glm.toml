@@ -1,5 +1,4 @@
-# dev-stack toolkit smoke (task 4.6): each GLM harness uses bd, openspec and a
-# codebase-memory MCP tool (removed from dev-stack 2026-11-20; see docs/harnesses.md); cc with toolkit none shows the tools are absent.
+# Exercise bd and OpenSpec with the toolkit enabled, with a toolkit-off control.
 runs = ["test-oracle-devstack", "cc-glm53flash-medium-devstack", "omp-glm53flash-medium-devstack",
         "hermes-glm53flash-medium-devstack", "cc-glm53flash-medium"]
 repeats = 1

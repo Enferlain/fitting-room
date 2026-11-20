@@ -6,6 +6,9 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 ### Changed
 
+- Review fix (section 5): the OpenCode store install keeps only the platform build its postinstall links (npm pulls all four linux-x64 variants): 992 MB → 247 MB. Review runs: oracle/nop 2/2 and 0/2 on both tasks; Claude Code, omp and Hermes with GLM from the store, agent setup 0.4–0.7 s (was 21 s and ~6 min with per-trial installs); `dev-stack` smoke with Claude Code passes, toolkit-off control fails.
+- Podman campaigns provision all five pinned harnesses once with `fr harness ensure` and verify their versions from read-only mounts at trial start. All five reached agent execution in under 10 s on warm smoke trials.
+- The opt-in `dev-stack` toolkit mounts pinned bd and OpenSpec from the store and initializes the issue database inside each trial's repo copy. Store GC removes obsolete toolkit installs. The revised toolkit smoke passed with Claude Code, Oh My Pi and Hermes through GLM.
 - sd-scripts' canonical environment is now a Python + Rust composite (`kind = "python+rust"`): the 3.14t venv plus Rust 1.99.1, the Pliron candidate's crates and a warmed target, provisioned in 42 s. Spike `spikes/sd-rust-check` (N7's commit) builds and tests the crate offline in a trial and imports torch and xDSL from the venv. Store GC keeps both halves of composite environments.
 - Repo benchmark configs now select one canonical dependency environment. `fr env check` reports historical Python lock differences without provisioning anything.
 - Repo-backed campaigns run prebuilt trials in rootless Podman. They copy read-only snapshots into trial storage, mount the canonical Python environment read-only, and record its identity in trial provenance. Rust trials reuse a warmed Cargo seed with trial-local build writes.

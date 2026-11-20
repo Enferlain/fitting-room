@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import logging
 import os
 import subprocess
 import tomllib
@@ -22,6 +21,7 @@ from pathlib import Path
 from fitting_room.bench_native import ensure_environment
 from fitting_room.config import Campaign, ConfigError, ConfigRoot, RunConfig
 from fitting_room.environments.podman import IMPORT_PATH, task_repo, validate_gpu
+from fitting_room.harness_store import BINARIES, ensure_harness
 from fitting_room.podman_host import (
     BASE_IMAGE_NAMES,
     check_storage,
@@ -29,11 +29,11 @@ from fitting_room.podman_host import (
     local_podman_env,
     podman_host_env,
 )
-from fitting_room.provenance import digest_path, write_sidecars
+from fitting_room.provenance import write_sidecars
 from fitting_room.providers import PROVIDERS, stage_certs, write_ca_overlay
-from fitting_room.store import StoreError, component, store_lock, wsl_path
+from fitting_room.store import StoreError, store_lock, wsl_path
 from fitting_room.tasks.materialize import MaterializeError
-from fitting_room.toolkits import Toolkit, load_toolkit, stage_tasks, unsupported
+from fitting_room.toolkits import Toolkit, ensure_toolkit, load_toolkit, stage_tasks, unsupported
 
 JOB_CONFIG_NAME = "job-config.json"
 # Variables that make Harbor upload a host login (e.g. ~/.codex/auth.json) into the
@@ -307,28 +307,20 @@ def _podman_run(
                 for host in spec.extra_allowed_hosts
             ),
         )
-    if run.harness_version:
-        install = store / "harness" / component(run.harness) / component(run.harness_version)
-        if install.is_dir():
-            options["harness_path"] = str(install)
-        else:
-            logging.getLogger(__name__).warning(
-                "Run %s uses Harbor's per-trial install for %s %s. "
-                "Harness store provisioning is tracked in OpenSpec section 5.",
-                run.name,
-                run.harness,
-                run.harness_version,
-            )
+    if run.harness in BINARIES:
+        if not run.harness_version:
+            raise StoreError(f"Run '{run.name}' must pin {run.harness}")
+        options["harness_path"] = str(ensure_harness(run.harness, run.harness_version, store))
+        adapters = {"codex": "FrCodex", "claude-code": "FrClaudeCode", "opencode": "FrOpenCode"}
+        if adapter := adapters.get(run.harness):
+            spec = replace(spec, import_path=f"fitting_room.adapters.pinned:{adapter}")
     if toolkit.dockerfile_append.strip():
         raise StoreError(
             f"Toolkit '{run.toolkit}' requires a Dockerfile layer unavailable in Podman"
         )
-    if not toolkit.empty:
-        digest = digest_path(toolkit.path)
-        install = store / "toolkits" / component(run.toolkit) / digest.removeprefix("sha256:")
-        if not install.is_dir():
-            raise StoreError(f"Podman toolkit store is missing {install} (OpenSpec section 5)")
-        options["toolkit_path"] = str(install)
+    if toolkit.store:
+        options["toolkit_path"] = str(ensure_toolkit(toolkit, store))
+        options["toolkit_beads"] = "bd" in toolkit.store
     return spec, options
 
 
@@ -380,6 +372,8 @@ def run_campaign(
         try:
             task_gpu = campaign.config.gpu.task_gpu
             podman_tasks, needs_gpu = _podman_tasks(campaign.task_dirs, task_gpu)
+            if not podman_tasks and any(toolkit.store for toolkit in toolkits.values()):
+                raise StoreError("Store-backed toolkits require Podman tasks")
             if podman_tasks:
                 host_env = podman_host_env()
                 store = check_storage(root.path.parent / "tasks", results_root, host_env)[

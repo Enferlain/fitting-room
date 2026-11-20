@@ -21,12 +21,17 @@ from typing import Any
 from harbor.agents.installed.pi import _REMOTE_PI_MCP_ADAPTER_EXTENSION, Pi
 from harbor.environments.base import BaseEnvironment
 
+from fitting_room.adapters.pinned import PinnedInstall
+from fitting_room.environments.podman import FrPodmanEnvironment
+
 OMP_PACKAGE = "@oh-my-pi/pi-coding-agent"
 BUN_VERSION = "1.3.14"  # minimum declared by the omp package's engines field
 _BUN_PATH = 'export PATH="$HOME/.bun/bin:$PATH"; '
 
 
-class OhMyPi(Pi):
+class OhMyPi(PinnedInstall, Pi):
+    store_harness_name = "omp"
+
     @staticmethod
     def name() -> str:
         return "omp"
@@ -39,6 +44,9 @@ class OhMyPi(Pi):
         return stdout.strip().splitlines()[-1].strip().removeprefix("omp/")
 
     async def install(self, environment: BaseEnvironment) -> None:
+        if isinstance(environment, FrPodmanEnvironment):
+            await super().install(environment)
+            return
         await self.ensure_system_dependencies(environment, ("curl", "unzip"))
         version = f"@{self._version}" if self._version else "@latest"
         await self.exec_as_agent(

@@ -40,15 +40,24 @@ Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude m
 
 `configs/campaigns/smoke-real.toml` (hello task, 1 repeat) passed for both supported pairs on 2026-11-17: `cc-glm53flash-medium` (Claude Code 2.1.263 + GLM 5.3 Flash) and `oc-qwen35-9b` (OpenCode 2.2.6 + local Qwen3.5-9B).
 
-## Toolkits (task 4.6)
+## Podman harnesses and toolkits
 
-`dev-stack` (`configs/toolkits/dev-stack/`): bd and openspec on PATH. Until 2026-11-20 it
-also carried the codebase-memory MCP server and skill; they were removed because indexing
-writes far too much for what the benchmark needs. The MCP and skill wiring below stays
-for other toolkits, and the smoke results were recorded with codebase-memory. `fr run` stages a hardlinked copy of each task with the
-toolkit's image layer appended; MCP servers and skills go on Harbor's agent config and
-each Harbor agent registers them in its harness's own config. `hook` items are refused
-for every harness (no shared mechanism yet), so `bd prime` is not part of `dev-stack`.
+`fr run` provisions each selected harness version before starting Harbor and
+mounts its installation read-only into every trial. To provision a version in
+advance, run `fr harness ensure <name> <version>`. Use the full source SHA as
+Hermes's version. The defaults live in `configs/runs/`.
+
+`dev-stack` (`configs/toolkits/dev-stack/`) adds bd and OpenSpec to PATH. Its
+`[store]` pins select the tools to provision and identify the shared install.
+Each trial initializes bd from
+the copied snapshot's JSONL export. Select it with `toolkit = "dev-stack"` in a
+run config. Other toolkits can still register MCP servers and skills through
+Harbor. The `hook` item kind has no harness support yet.
+
+See [Podman section 5 results](spikes.md#podman-section-5-harness-and-toolkit-stores-2026-11-20)
+for the current smoke and its snapshot preparation.
+
+### Historical Docker toolkit spike (task 4.6)
 
 Smoke task `spikes/toolkit-check` (hermes-agora snapshot), 2026-11-19:
 

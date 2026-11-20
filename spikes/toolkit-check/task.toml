@@ -4,7 +4,7 @@ artifacts = []
 [task]
 name = "fr/spike-toolkit-check"
 version = "1.0.0"
-description = "Toolkit smoke: use bd, openspec and the codebase-memory MCP tools in a hermes-agora snapshot."
+description = "Toolkit smoke: use bd and openspec in a hermes-agora snapshot."
 
 [metadata]
 repo = "hermes-agora"
@@ -18,5 +18,6 @@ environment_mode = "shared"
 timeout_sec = 900.0
 
 [environment]
+docker_image = "fr-base/cpu:1"
 network_mode = "public"
 build_timeout_sec = 900.0

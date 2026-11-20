@@ -1,4 +1,4 @@
-"""Identify obsolete benchmark environments and unreferenced harness versions."""
+"""Identify obsolete benchmark environments and unused store installs."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from fitting_room.bench_env import python_inputs
 from fitting_room.bench_native import native_key
 from fitting_room.config import ConfigRoot, load_run
 from fitting_room.store import StoreError, store_lock
+from fitting_room.toolkits import load_toolkit
 
 
 def _entries(directory: Path) -> list[Path]:
@@ -50,9 +51,16 @@ def collect_store(store: Path, root: ConfigRoot, *, apply: bool = False) -> list
                 data = json.loads(marker.read_text())
                 if (data.get("harness"), data.get("version")) == (path.parent.name, path.name):
                     harness_installs.append(path)
-        if harness_installs and not run_configs:
+        toolkit_installs = [
+            path
+            for path in _entries(store / "toolkits")
+            if re.fullmatch(r"[a-f0-9]{64}", path.name)
+            and (path / "toolkit.digest").is_file()
+            and (path / "toolkit.digest").read_text().strip() == path.name
+        ]
+        if (harness_installs or toolkit_installs) and not run_configs:
             raise StoreError(
-                f"Found no run configs under {root.runs}; cannot evaluate harness refs"
+                f"Found no run configs under {root.runs}; cannot evaluate harness and toolkit refs"
             )
         runs = [load_run(path.stem, root) for path in run_configs]
         harnesses = {(run.harness, run.harness_version) for run in runs}
@@ -67,7 +75,16 @@ def collect_store(store: Path, root: ConfigRoot, *, apply: bool = False) -> list
         stale.extend(
             path for path in harness_installs if (path.parent.name, path.name) not in harnesses
         )
+        toolkit_digests = {
+            name: load_toolkit(root.toolkits, name).store_digest()
+            for name in {run.toolkit for run in runs}
+        }
+        stale.extend(
+            path for path in toolkit_installs if path.name != toolkit_digests.get(path.parent.name)
+        )
         if apply:
+            # Leave the empty per-entry lock files in place so a lock's inode
+            # stays stable across collection and subsequent provisioning.
             for path in stale:
                 shutil.rmtree(path)
         return stale
