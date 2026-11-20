@@ -86,6 +86,12 @@ def write_sidecars(
             environment = podman_options["repo_environments"].get(source)
             sidecar["environment"] = environment
             sidecar["harness_store_path"] = podman_options.get("harness_path")
+            harness_manifest = (
+                Path(podman_options.get("harness_path") or "/nonexistent") / "harness.json"
+            )
+            if harness_manifest.is_file():
+                # Name, version and installer recipe of the mounted install.
+                sidecar["harness_store"] = json.loads(harness_manifest.read_text())
             sidecar["toolkit_store_path"] = podman_options.get("toolkit_path")
         sidecar["trial"] = result.get("trial_name")
         (result_path.parent / SIDECAR_NAME).write_text(json.dumps(sidecar, indent=2) + "\n")

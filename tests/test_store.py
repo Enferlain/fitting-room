@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from fitting_room.bench_env import check_task, python_inputs
 from fitting_room.cli import app
 from fitting_room.config import ConfigRoot
+from fitting_room.harness_store import RECIPES
 from fitting_room.store import StoreError, check_uv_filesystem, store_path
 from fitting_room.store_gc import collect_store
 from fitting_room.toolkits import load_toolkit
@@ -100,7 +101,9 @@ def test_gc_only_applies_to_stale_managed_entries(tmp_path, benchmark):
         path.mkdir(parents=True)
         (path / "env.json").write_text(json.dumps({"key": path.name}))
     for path in (referenced, old_pin):
-        (path / "harness.json").write_text(json.dumps({"harness": "omp", "version": path.name}))
+        (path / "harness.json").write_text(
+            json.dumps({"harness": "omp", "version": path.name, "recipe": RECIPES["omp"]})
+        )
     unmanaged = store / "harness/omp/3"
     unmanaged.mkdir()
     with pytest.raises(StoreError, match="Found no run configs"):
@@ -206,3 +209,33 @@ def test_composite_trial_gets_venv_and_rust_target():
     assert env["VIRTUAL_ENV"] == record["venv"] and env["CARGO_TARGET_DIR"] == "/opt/fr-target"
     assert env["RUSTUP_TOOLCHAIN"] == "1.99.1" and env["CARGO_NET_OFFLINE"] == "true"
     assert any("/opt/fr-native-seed/target/." in step for step in setup)
+
+
+def test_gc_collects_referenced_harness_built_with_old_recipe(tmp_path, monkeypatch):
+    root = ConfigRoot(tmp_path / "configs")
+    root.runs.mkdir(parents=True)
+    (root.arms / "stock").mkdir(parents=True)
+    (root.toolkits / "none").mkdir(parents=True)
+    (root.runs / "run.toml").write_text(
+        'harness = "omp"\nharness_version = "1.0.0"\nmodel = "zai/model"\neffort = "high"\n'
+    )
+    store = tmp_path / "store"
+    path = store / "harness/omp/1.0.0"
+    path.mkdir(parents=True)
+    (path / "harness.json").write_text(
+        json.dumps({"harness": "omp", "version": "1.0.0", "recipe": RECIPES["omp"]})
+    )
+    assert collect_store(store, root) == []
+    monkeypatch.setitem(RECIPES, "omp", RECIPES["omp"] + 1)
+    assert collect_store(store, root) == [path]
+
+
+def test_toolkit_recipe_is_part_of_the_digest(tmp_path, monkeypatch):
+    from fitting_room import toolkits
+
+    config = tmp_path / "dev-stack"
+    config.mkdir()
+    (config / "toolkit.toml").write_text('[store]\nbd = "1.3.2"\n')
+    before = toolkits.load_toolkit(tmp_path, "dev-stack").store_digest()
+    monkeypatch.setattr(toolkits, "TOOLKIT_RECIPE", toolkits.TOOLKIT_RECIPE + 1)
+    assert toolkits.load_toolkit(tmp_path, "dev-stack").store_digest() != before

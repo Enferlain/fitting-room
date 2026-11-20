@@ -62,7 +62,9 @@ class Toolkit:
     def store_digest(self) -> str | None:
         if not self.store:
             return None
-        pins = json.dumps(self.store, sort_keys=True, separators=(",", ":"))
+        pins = json.dumps(
+            {"recipe": TOOLKIT_RECIPE, "pins": self.store}, sort_keys=True, separators=(",", ":")
+        )
         return hashlib.sha256(pins.encode()).hexdigest()
 
     def mcp_servers(self) -> list[dict]:
@@ -117,6 +119,11 @@ def unsupported(harness: str, toolkit: Toolkit) -> list[str]:
         return []
     ok = HARNESS_SUPPORT[harness]
     return [f"{i.name} ({i.kind})" for i in toolkit.items if i.kind not in ok]
+
+
+#: Toolkit installer recipe, part of the store digest: bump when the install script
+#: changes what ends up in the store, so old installs are not reused (GC removes them).
+TOOLKIT_RECIPE = 1
 
 
 def ensure_toolkit(toolkit: Toolkit, store: Path) -> Path:

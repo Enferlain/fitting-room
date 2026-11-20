@@ -11,6 +11,7 @@ from pathlib import Path
 from fitting_room.bench_env import python_inputs
 from fitting_room.bench_native import native_key
 from fitting_room.config import ConfigRoot, load_run
+from fitting_room.harness_store import RECIPES
 from fitting_room.store import StoreError, store_lock
 from fitting_room.toolkits import load_toolkit
 
@@ -73,7 +74,12 @@ def collect_store(store: Path, root: ConfigRoot, *, apply: bool = False) -> list
             and (path / "env.json").is_file()
         ]
         stale.extend(
-            path for path in harness_installs if (path.parent.name, path.name) not in harnesses
+            path
+            for path in harness_installs
+            if (path.parent.name, path.name) not in harnesses
+            # Built with an older installer recipe: never reused, so collectable.
+            or json.loads((path / "harness.json").read_text()).get("recipe")
+            != RECIPES.get(path.parent.name)
         )
         toolkit_digests = {
             name: load_toolkit(root.toolkits, name).store_digest()

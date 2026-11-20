@@ -23,6 +23,7 @@ def test_harness_provision_reuses_verified_install(tmp_path, monkeypatch):
     assert json.loads((path / "harness.json").read_text()) == {
         "harness": "codex",
         "version": "0.163.0",
+        "recipe": harness_store.RECIPES["codex"],
     }
     assert harness_store.ensure_harness("codex", "0.163.0", tmp_path) == path
     assert [verify for _, verify in calls] == [False, True]
@@ -54,3 +55,19 @@ def test_existing_harness_with_bad_manifest_is_not_replaced(tmp_path):
     with pytest.raises(StoreError, match="Invalid harness manifest"):
         harness_store.ensure_harness("codex", "0.163.0", tmp_path)
     assert manifest.read_text() == "{"
+
+
+def test_recipe_bump_invalidates_existing_harness(tmp_path, monkeypatch):
+    def provision(path, command, *, verify=False):
+        if verify:
+            return "opencode v2.2.6"
+        binary = path / "bin" / "opencode"
+        binary.parent.mkdir()
+        binary.touch(mode=0o755)
+
+    monkeypatch.setattr(harness_store, "provision_in_base", provision)
+    path = harness_store.ensure_harness("opencode", "2.2.6", tmp_path)
+    monkeypatch.setitem(harness_store.RECIPES, "opencode", harness_store.RECIPES["opencode"] + 1)
+    with pytest.raises(StoreError, match="installer recipe"):
+        harness_store.ensure_harness("opencode", "2.2.6", tmp_path)
+    assert path.is_dir()  # never replaced underneath a running campaign

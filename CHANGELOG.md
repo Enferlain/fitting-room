@@ -6,6 +6,7 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 ### Changed
 
+- Store installs carry an installer recipe: `harness.json` records `recipe` (per harness; OpenCode is 2 after the pruning change) and the toolkit digest includes `TOOLKIT_RECIPE`. An install built with another recipe is never reused (refused with "remove with campaigns stopped"), and `fr store gc` lists it. Trial provenance records the mounted harness's name, version and recipe (`harness_store`). Existing entries were stamped; the old dev-stack digest was collected.
 - Review fix (section 5): the OpenCode store install keeps only the platform build its postinstall links (npm pulls all four linux-x64 variants): 992 MB → 247 MB. Review runs: oracle/nop 2/2 and 0/2 on both tasks; Claude Code, omp and Hermes with GLM from the store, agent setup 0.4–0.7 s (was 21 s and ~6 min with per-trial installs); `dev-stack` smoke with Claude Code passes, toolkit-off control fails.
 - Podman campaigns provision all five pinned harnesses once with `fr harness ensure` and verify their versions from read-only mounts at trial start. All five reached agent execution in under 10 s on warm smoke trials.
 - The opt-in `dev-stack` toolkit mounts pinned bd and OpenSpec from the store and initializes the issue database inside each trial's repo copy. Store GC removes obsolete toolkit installs. The revised toolkit smoke passed with Claude Code, Oh My Pi and Hermes through GLM.

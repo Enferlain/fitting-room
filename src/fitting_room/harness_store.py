@@ -24,6 +24,10 @@ NPM_PACKAGES = {
     "codex": "@openai/codex",
     "opencode": "@opencode/cli",
 }
+#: Installer recipe per harness. Bump when an install script changes what ends up in the
+#: store (e.g. opencode 2: only the linked platform build is kept). An entry built with
+#: another recipe is never reused; `fr store gc --apply` removes it.
+RECIPES = {"claude-code": 1, "codex": 1, "opencode": 2, "omp": 1, "hermes": 1}
 SEMVER = r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
 HERMES_SHA = r"[0-9a-f]{40}"
 
@@ -145,7 +149,7 @@ def ensure_harness(name: str, version: str, store: Path) -> Path:
     if wsl_path(path, "harness install") != path:
         raise StoreError(f"Harness install must use its store path: {path}")
     manifest = path / "harness.json"
-    expected = {"harness": name, "version": version}
+    expected = {"harness": name, "version": version, "recipe": RECIPES[name]}
     executable = path / "bin" / BINARIES[name]
     with (
         store_lock(store, exclusive=False),
@@ -162,6 +166,11 @@ def ensure_harness(name: str, version: str, store: Path) -> Path:
         else:
             if installed == expected and executable.is_file() and os.access(executable, os.X_OK):
                 return path
+            if installed.get("recipe") != expected["recipe"]:
+                raise StoreError(
+                    f"{path} was built with installer recipe {installed.get('recipe')}, current is "
+                    f"{expected['recipe']}; remove it with campaigns stopped (fr store gc --apply)"
+                )
             # A completed entry may be mounted by a concurrent campaign.
             raise StoreError(f"Invalid harness install at {path}; remove it with campaigns stopped")
         with building_entry(path):
