@@ -139,8 +139,13 @@ Acceptance: a 10-task sequential campaign adds no image layers. Its disk after c
 - **Podman and Docker Desktop together.** They're independent. Docker Desktop's WSL integration doesn't touch Podman's socket or storage. Don't set `DOCKER_HOST` globally.
 - **Network speed.** PyPI and crates.io were very slow on 2026-11-19. With envs hardlinked from the existing cache, most environments need no downloads at all.
 
+## Decided (formerly open questions)
+
+- **Podman install:** NixOS module (`virtualisation.podman.enable = true`, `dockerCompat = false`), done by the user on 2026-11-20. `/opt/fr-store` (tmpfiles) is not set up, so `$FR_STORE` defaults to `~/.local/share/fitting-room/store`.
+- **Compose frontend:** `podman compose` with a fitting-room-local provider, nixpkgs' docker-compose over the Podman socket, set by the runner only for its Harbor calls. The user's global `PODMAN_COMPOSE_PROVIDER` (podman-compose) stays. podman-compose 1.5 lacks `cp` and `exec --no-TTY`.
+- **Project install (P4):** option (b), i.e. `UV_NO_SYNC=1` plus a generated `.pth` and console scripts for the project source (spike 2.4: `uv run` tried to build the project from PyPI and failed under the allowlist).
+- **`environment.delete = false`:** checked in Harbor 0.26's `DockerEnvironment.stop()`. It still runs `compose down` (containers and networks removed) and only omits `--rmi local --volumes --remove-orphans`. No named volumes are used, so nothing piles up. Verified: 0 containers, networks or volumes after trials.
+
 ## Open Questions
 
-- How Podman gets installed: Nix profile (`nix profile install nixpkgs#podman nixpkgs#podman-compose`) or the NixOS config (`virtualisation.podman.enable = true`, plus a tmpfiles rule for `/opt/fr-store`). This is the user's decision, being looked into as of 2026-11-19.
-- Compose frontend: podman-compose 1.x (drives the CLI, no socket) versus `podman compose` over the Podman socket. Pick whichever passes `:O` through; the spike decides.
-- ~~P4's project-install option~~ Decided 2026-11-20: (b), i.e. `UV_NO_SYNC=1` plus a generated `.pth` and console scripts for the project source (spike 2.4: `uv run` tried to build the project from PyPI and failed under the allowlist).
+- Whether lock-specific environments (P4.2–P4.3) are kept, or every task must pass on its repo's shared environment, with tasks that don't being dropped. User decision before section 3.
