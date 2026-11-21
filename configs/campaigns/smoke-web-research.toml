@@ -1,0 +1,7 @@
+# Check public HTTPS from an agent trial and verify that the no-op scores zero.
+runs = ["test-oracle", "test-nop", "cc-glm53flash-medium"]
+repeats = 1
+n_concurrent_trials = 1
+
+[tasks]
+include = ["spikes/web-research"]

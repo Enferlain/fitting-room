@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 from harbor.models.job.config import JobConfig
 
 from fitting_room.config import (
@@ -277,6 +278,15 @@ def test_hermes_refuses_thinking_off():
         FrHermesOptions(reasoning_effort="none")
     with pytest.raises(ValueError):
         FrHermesOptions()
+
+
+def test_hermes_skips_model_call_for_session_title(tmp_path):
+    from fitting_room.adapters.hermes import FrHermes
+
+    agent = FrHermes(logs_dir=tmp_path, reasoning_effort="medium")
+    config = yaml.safe_load(agent._build_config_yaml("glm-5.3-flash"))
+    assert config["agent"]["reasoning_effort"] == "medium"
+    assert config["auxiliary"]["title_generation"]["model_upgrade_enabled"] is False
 
 
 def test_codex_local_mapping_and_no_host_login(monkeypatch, tmp_path):

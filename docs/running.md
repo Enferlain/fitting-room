@@ -53,7 +53,7 @@ The provider is the part of `model` before the slash. Benchmarked models are GLM
 
 | Provider | Example `model` | How it connects |
 |---|---|---|
-| `zai` | `zai/glm-5.3`, `zai/glm-5.3-flash` | z.ai's Anthropic-compatible endpoint with the placeholder key `av-managed-key`. The host's Agent Vault substitutes the real key in-flight; `fr run` mounts Agent Vault's public CA into the sandbox through a generated Compose overlay. Agent Vault must be unlocked. |
+| `zai` | `zai/glm-5.3`, `zai/glm-5.3-flash` | The harness uses Z.AI's Messages or OpenAI-compatible coding endpoint. Agent Vault substitutes the real key for `av-managed-key` in flight. `fr run` mounts Agent Vault's public CA into the sandbox. Agent Vault must be unlocked. |
 | `local` | `local/qwen3.5-9b` | The serving profile's endpoint at `host.containers.internal:18080` with a placeholder key. Start it first with `uv run fr serve up <profile>`; `fr run` refuses local runs when it is down. |
 
 Only harness × provider pairs that have passed a smoke run are accepted (see `docs/harnesses.md`); others are refused before anything starts. Currently, Claude Code and Oh My Pi use z.ai, Codex and OpenCode use the local endpoint, and Hermes supports both.
@@ -89,6 +89,22 @@ The optional `agent_timeout_multiplier` scales each task's `[agent] timeout_sec`
 For a smoke task with a 600-second timeout, `2.0` allows 20 minutes for agent
 execution. The multiplier is saved in the generated `job-config.json`. Setup
 and verifier timeouts use their existing settings.
+
+## Agent internet access
+
+Use `network_mode = "public"` for standalone web research tasks whose answer
+can legitimately come from the public web. To exercise public HTTPS from a
+Podman trial, run `uv run fr run smoke-web-research`. The campaign uses the
+oracle, a no-op control, and Claude Code with GLM 5.3 Flash through Agent Vault.
+
+For coding tasks sourced from a repo with a public upstream, set
+`network_mode = "allowlist"` in `[agent]`. Limit additional hosts to the package
+registries the task needs. `fr run` adds the selected model endpoint. The
+verifier's network settings are configured separately.
+
+Select `toolkit = "dev-stack"` in a run configuration to provide Beads and
+OpenSpec. Beads loads issue data from the repo snapshot's JSONL into a trial-local
+database. A connection to the source repo's Dolt server is unnecessary.
 
 ## Results layout
 

@@ -6,11 +6,13 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 ### Added
 
+- Added a Podman smoke campaign for standalone web research. The oracle and Claude Code with GLM 5.3 Flash passed, and the no-op scored zero. Public-upstream coding tasks continue to use agent-phase allowlists.
 - External task material from the 20–21 Nov research pass (48-candidate audit and seven batch-01 tasks validated on another host) is organized. Answer-free reference material is in [docs/external-tasks/](docs/external-tasks/README.md): coverage tags and grid, candidate index, scores, batch-01 runtime pins. Oracles, expected answers, author notes and trial trees stay out of the public repo, in gitignored `work/domain-tasks/`.
 - Proposed the OpenSpec change `external-task-track` (bead `fitting-room-841`) to port batch 01 to Harbor/Podman and add `fr tasks grid`. Sections 1.1–1.2 are done.
 
 ### Changed
 
+- Hermes keeps its local session title and skips the auxiliary GLM call that would request thinking off.
 - Review fixes (section 6): (1) warmed Rust seeds no longer contain the repos' own workspace crates (`cargo clean -p` per workspace member after warming; native recipe 2). They were built from the canonical commit, newer than most task snapshots, so a trial could read later code (e.g. the Pliron crate's symbols in an N7-era task). Dependencies stay warm; trials compile their own crates from the snapshot: sd-scripts verifier 7 s, hcom `cargo test --no-run` 36 s, pytortch trial setup 92 s, all offline. (2) GLM runs are capped at 2 concurrent trials whatever the campaign asks (Harbor's default was 4). (3) `.gitignore` line endings normalized.
 - `fr task materialize` now builds a single-commit snapshot on the host, strips
   Beads connection state, and records both the source and snapshot commits.
@@ -21,6 +23,7 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 ### Verified
 
+- Captured GLM reasoning requests and reported usage for the pinned harnesses. Oh My Pi's `medium` maps to `low`, and its GLM 5.3 and Flash requests use different protocols. Claude Code's Messages responses exposed thinking text without reasoning-token counts. See the [wire capture](docs/spikes.md#glm-effort-wire-capture-2026-11-21).
 - The November 20 warm acceptance run passed all 27 sequential oracle trials
   across nine tasks and spikes. The Podman image inventory was identical and no
   image build events were recorded. Allocated store bytes were

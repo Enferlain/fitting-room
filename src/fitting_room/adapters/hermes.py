@@ -65,6 +65,10 @@ class FrHermes(PinnedInstall, Hermes):
     def _build_config_yaml(self, model, max_turns=None, *, connection=None) -> str:  # type: ignore[override]
         config = yaml.safe_load(Hermes._build_config_yaml(model, max_turns, connection=connection))
         config.setdefault("agent", {})["reasoning_effort"] = self._reasoning_effort
+        # Keep the local title and skip the auxiliary model call, which disables GLM thinking.
+        config.setdefault("auxiliary", {}).setdefault("title_generation", {})[
+            "model_upgrade_enabled"
+        ] = False
         return yaml.dump(config, default_flow_style=False)
 
     async def exec_as_agent(self, environment: BaseEnvironment, command: str, **kwargs):

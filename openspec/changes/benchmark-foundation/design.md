@@ -126,7 +126,7 @@ Adapters register MCP servers and skills in the harness's own config inside the 
 - [Private code goes to hosted model APIs during runs] → accepted for z.ai (GLM), matching existing daily use. Results and tasks stay local and gitignored.
 - [Agent Vault is down or locked, so GLM calls fail inside sandboxes] → these surface as connection or auth errors, which are classified as infrastructure errors and excluded from scores. A pre-campaign check calls the endpoint once before starting.
 - [Some harnesses may not speak a protocol z.ai offers (e.g. Codex requires the Responses API)] → the smoke gate refuses that harness × endpoint pair with a recorded reason, rather than scoring failures.
-- [Public-upstream tasks could be solved by fetching upstream] → agent-phase allowlist (model endpoint and registries only).
+- [Public-upstream tasks could be solved by fetching upstream] → use an agent-phase allowlist for those tasks (model endpoint and required registries only). Qualify public web access on a standalone research task where retrieving the answer from a public source is part of the work.
 - [Toolkit setup changes the repo or the task's difficulty, e.g. an index that answers questions directly] → toolkit setup is recorded per trial, and toolkit and no-toolkit results are never pooled in one row.
 
 ## Migration Plan

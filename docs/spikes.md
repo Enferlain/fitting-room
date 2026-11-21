@@ -195,3 +195,99 @@ or reference-string hits.
 ### Seeds without the repos' own crates (review, 2026-11-21)
 
 The warmed Rust targets held each repo's own crates compiled at the canonical commit (newer than most snapshots), which the directory leak probe never sees. Native recipe 2 removes every workspace member's artifacts after warming (`cargo metadata --no-deps` → `cargo clean -p`, dev and release). Remaining own-crate artifacts: sd-scripts 0 (198 dependency artifacts kept), hcom 0, pytortch 0 (`target` and `bridge-target`). Offline trial checks at the canonical commits: `spikes/sd-rust-check` passes (verifier 7 s); hcom `cargo test --workspace --locked --offline --no-run` passes in 36 s; pytortch trial setup (`build.sh`) completes in 92 s and produces the native `.so`. Re-provisioning took 37 s (sd-scripts), 77 s (hcom) and 451 s (pytortch).
+
+### Public web research on Podman (2026-11-21)
+
+`uv run fr run smoke-web-research` exercises public HTTPS on a standalone
+research task. The oracle and Claude Code 2.1.263 with GLM 5.3 Flash scored 1.
+The no-op scored 0. All three trials completed without infrastructure errors.
+The Claude Code trajectory recorded Bash calls that fetched and read the
+[RFC 9116 text](https://www.rfc-editor.org/rfc/rfc9116.txt) before writing the
+answer. Local results are under
+`work/bead-2le/smoke-web-research/20261121-035554/`.
+
+Public-upstream coding tasks retain agent-phase allowlists. The Section 6
+`netallow` trial tested the restricted path, and Section 5's toolkit smoke
+tested opt-in Beads and OpenSpec with a seeded, trial-local issue database.
+
+### GLM effort wire capture (2026-11-21)
+
+The probe ran the pinned binaries from the harness store with fresh client
+state and the same short modular arithmetic question. A local HTTP relay
+forwarded model calls to the actual Z.AI coding endpoints through Agent Vault.
+It recorded selected request fields, status, usage and the length of exposed
+thinking text. It rejected requests for other models and any explicit
+thinking-off request. Native run configurations are unchanged apart from the
+Hermes title fix described below. This was a CLI wire probe, separate from
+the Podman task campaign. The probe and sanitized wire log are under
+`work/bead-os6/`.
+
+The OpenAI-compatible endpoint reported `completion_tokens_details.reasoning_tokens`.
+The Messages endpoint exposed thinking text but omitted a reasoning-token
+breakdown in these captures. Output tokens there include the broader output
+and cannot be compared directly with reasoning tokens. The question and model
+were held fixed for each series. Harness system prompts can differ, so the
+results qualify the wire mappings and observed usage for this question.
+
+In the Hermes pilot, the auxiliary session-title request sent thinking disabled
+and the relay rejected it. The adapter now keeps the locally derived title and
+disables the model upgrade. The main request still uses the configured effort.
+`smoke-hermes-glm` passed in Podman with zero infrastructure errors after the
+change, and the session export contained the locally derived title. The run
+is under `work/bead-os6/hermes-smoke/`.
+
+OpenCode's GLM probe used an explicit OpenAI-compatible provider with
+configured variants. With Flash, the `low`, `medium`, `high`, and `max`
+variants each sent `thinking.type = "enabled"` and the configured
+`reasoning_effort` on the main request. The single runs returned 295, 115,
+691, and 889 reasoning tokens respectively. The supported `fr run` pairing
+for OpenCode remains local models.
+
+**GLM 5.3 spot checks.** Each cell below is one successful main request unless it
+lists multiple CLI settings. These checks isolate transport and field changes
+between GLM 5.3 and Flash.
+
+| Harness | CLI effort | Endpoint | Thinking | Sent effort | Reasoning returned |
+|---|---|---|---|---|---|
+| Claude Code | medium | Messages | adaptive | medium | 176 characters |
+| Oh My Pi | low, medium | Messages | enabled, budget 2,048 | low | 1,373 / 130 characters |
+| Oh My Pi | high | Messages | enabled, budget 16,384 | high | 1,696 characters |
+| Oh My Pi | max | Messages | enabled, budget 32,768 | max | 1,544 characters |
+| Hermes | medium | Chat Completions | enabled | medium | 534 tokens |
+| OpenCode, custom provider | medium | Chat Completions | enabled | medium | 947 tokens |
+
+**GLM 5.3 Flash, five runs per distinct main-request setting in the
+configured harnesses.** Ranges show the minimum and maximum, with the median
+in parentheses. The OpenCode custom route and duplicate labels are spot checks
+listed separately.
+
+| Harness | CLI effort | Sent effort | Reasoning returned |
+|---|---|---|---|
+| Claude Code | low | low | 432–1,207 characters (561) |
+| Claude Code | medium | medium | 456–819 characters (606) |
+| Claude Code | high | high | 1,013–1,230 characters (1,161) |
+| Claude Code | xhigh | xhigh | 776–1,888 characters (926) |
+| Claude Code | max | max | 780–1,528 characters (941) |
+| Oh My Pi | low | low | 201–344 tokens (272) |
+| Oh My Pi | high | high | 402–846 tokens (654) |
+| Oh My Pi | max | max | 486–1,061 tokens (635) |
+| Hermes | low | low | 41–631 tokens (123) |
+| Hermes | medium | medium | 366–2,223 tokens (538) |
+| Hermes | high | high | 609–900 tokens (724) |
+| Hermes | max | max | 426–803 tokens (596) |
+
+Claude Code sent `thinking.type = "adaptive"` with `output_config.effort`
+and no `budget_tokens`. One run using `CLAUDE_CODE_EFFORT_LEVEL=medium`
+instead of the flag produced the same wire fields. Oh My Pi Flash sent
+top-level `reasoning_effort` and omitted `thinking`. Spot checks of
+`minimal` and `medium` both sent `low`, and `xhigh` sent `high`.
+The relay observed reasoning in all these Flash Oh My Pi responses.
+Hermes sent `thinking.type = "enabled"` and top-level `reasoning_effort`.
+Spot checks of `minimal` and `xhigh` sent `low` and `max` respectively.
+
+**Direct Messages budget probe.** With thinking enabled and no effort field,
+Flash accepted every request at 1,024 and 8,192 budget tokens (five each)
+and also accepted the single 256-token probe. The reasoning-text ranges for
+1,024 and 8,192 overlapped (1,395–2,750 and 1,283–3,840 characters).
+The responses did not expose a reasoning-token count or establish that Z.AI
+enforced the supplied budget.

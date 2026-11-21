@@ -97,10 +97,10 @@ Harbor reinstalls the harness in every trial (no install cache). Hermes takes ab
 `toolkit.toml` replaces `dockerfile_append` with a `store` section; the schema change is in task 5.x.
 
 ### P7. Network
-Unchanged policy: agents get web access; model endpoints go through Agent Vault (GLM) or llama-swap (local); tasks with a public upstream use Harbor's allowlist mode.
+Standalone web research uses public egress. Public-upstream coding tasks use Harbor's agent-phase allowlist. Model endpoints go through Agent Vault (GLM) or llama-swap (local).
 - Agent Vault works as-is (verified).
 - llama-swap needs `--map-host-loopback` (P1).
-- The egress sidecar is Harbor's and has Podman support; the spike verifies an allowlist task blocks `github.com`. Blocking the task repo's own remote (beads `fitting-room-2le`) is designed here as an allowlist entry or a deny in the sidecar, but implemented with 2le.
+- Harbor's Podman egress sidecar enforces the allowed hosts during the agent phase. For public-upstream coding tasks, omit the upstream host from the allowlist. The `netallow` spike verifies that GitHub is blocked even when PyPI is allowed. The separate `web-research` spike exercises public HTTPS as part of the requested work.
 
 ### P8. Retiring the Docker artifacts
 After the pilot task passes under Podman:

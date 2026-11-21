@@ -36,6 +36,16 @@ Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude m
 
 **Cost caveat:** Claude Code reported `cost_usd: 0.171` for this run, which is its estimate at Anthropic prices, not GLM's. Scoring must compute GLM cost from `configs/prices.toml` and ignore harness-reported cost for non-native providers.
 
+### Comparing GLM reasoning effort
+
+`effort` requests a harness setting. Its wire representation depends on the
+harness, model, and endpoint. For example, with GLM 5.3 Flash, Oh My Pi 18.12.6
+maps `medium` to `low` on the coding endpoint, Hermes sends `medium` to that
+endpoint, and Claude Code 2.1.263 sends adaptive thinking with
+`output_config.effort = "medium"` to the Messages endpoint. Keep the harness,
+model, and route visible when comparing results. See the
+[wire capture](spikes.md#glm-effort-wire-capture-2026-11-21) for details.
+
 ## Through `fr run`
 
 `configs/campaigns/smoke-real.toml` (hello task, 1 repeat) passed for both supported pairs on 2026-11-17: `cc-glm53flash-medium` (Claude Code 2.1.263 + GLM 5.3 Flash) and `oc-qwen35-9b` (OpenCode 2.2.6 + local Qwen3.5-9B).
