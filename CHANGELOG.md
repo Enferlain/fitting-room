@@ -8,6 +8,7 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 - Added a Podman smoke campaign for standalone web research. The oracle and Claude Code with GLM 5.3 Flash passed, and the no-op scored zero. Public-upstream coding tasks continue to use agent-phase allowlists.
 - External task material from the 20–21 Nov research pass (48-candidate audit and seven batch-01 tasks validated on another host) is organized. Answer-free reference material is in [docs/external-tasks/](docs/external-tasks/README.md): coverage tags and grid, candidate index, scores, batch-01 runtime pins. Oracles, expected answers, author notes and trial trees stay out of the public repo, in gitignored `work/domain-tasks/`.
+- `fr task check <task>` runs Harbor's task quality rubric through the Podman trial path, using Harbor's wrapper assembly, a jq validator and a fitting-room run config. It replaces `harbor check` in the authoring skill. Both internal tasks pass (bead `fitting-room-2do`).
 - Proposed the OpenSpec change `external-task-track` (bead `fitting-room-841`) to port batch 01 to Harbor/Podman and add `fr tasks grid`. Sections 1.1–1.2 are done.
 
 ### Changed

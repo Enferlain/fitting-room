@@ -291,3 +291,21 @@ and also accepted the single 256-token probe. The reasoning-text ranges for
 1,024 and 8,192 overlapped (1,395–2,750 and 1,283–3,840 characters).
 The responses did not expose a reasoning-token count or establish that Z.AI
 enforced the supplied budget.
+
+### Task quality check on Podman (2026-11-21)
+
+`fr task check` (bead `fitting-room-2do`) runs Harbor's default rubric (11 criteria)
+on the shared Podman base with Claude Code and GLM 5.3 Flash (`cc-glm53flash-high-authoring`).
+The wrapper task is built by Harbor's own assembly code. It leaves out
+`environment/repo/` and adds a note on the snapshot setup. The result is validated
+with jq.
+
+| Task | Time | Reward | Outcomes |
+|---|---|---|---|
+| `data-processing/label-busy-port` | 4 m 59 s | 1 | 11 pass |
+| `sd-scripts/responsive-ctrl-c` | 4 m 12 s | 1 | 10 pass, 1 not applicable (`structured_data_schema`) |
+
+The reviewers' explanations used the snapshot note correctly: no tests in the
+image, the canonical `$VIRTUAL_ENV`, a single fresh commit. The first run surfaced a
+report serialization bug. The trial itself was fine; the bug was fixed and covered by
+a test. Results: `results/task-check/20261121-161220/` and `20261121-161803/`.

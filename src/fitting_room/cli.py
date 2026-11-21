@@ -216,6 +216,34 @@ def task_materialize(
         typer.echo("warning: repo has submodules; their contents are not in the snapshot")
 
 
+@task_app.command("check")
+def task_check(
+    task_dir: Path = typer.Argument(..., help="Task directory (contains task.toml)"),
+    run: str = typer.Option(
+        "cc-glm53flash-high-authoring", help="Run configuration for the reviewer agent"
+    ),
+    rubric: Path = typer.Option(None, help="Rubric file (default: Harbor's built-in rubric)"),
+    repo_root: Path = typer.Option(Path("."), help="fitting-room repo root"),
+) -> None:
+    """Run Harbor's task quality rubric through fitting-room's Podman trial path."""
+    from fitting_room.config import ConfigError
+    from fitting_room.tasks.check import CheckError, check_task
+
+    try:
+        out = check_task(task_dir, run, repo_root, rubric_path=rubric)
+    except (CheckError, ConfigError) as err:
+        typer.echo(f"error: {err}", err=True)
+        raise typer.Exit(2) from None
+    if out.error:
+        typer.echo(f"{out.task}: check failed: {out.error}", err=True)
+        typer.echo(f"report: {out.report_path}")
+        raise typer.Exit(1)
+    for name, check in (out.checks or {}).items():
+        typer.echo(f"{check['outcome']:>14}  {name}: {check['explanation']}")
+    fails = sum(c["outcome"] == "fail" for c in (out.checks or {}).values())
+    typer.echo(f"{fails} failing criteria; report: {out.report_path}")
+
+
 env_app = typer.Typer(help="Provision and inspect canonical repo environments.")
 app.add_typer(env_app, name="env")
 

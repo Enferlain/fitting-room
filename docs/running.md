@@ -195,6 +195,21 @@ repo-relative paths). pytortch-backend-experiments drops its generated stage art
 task that needs some of them lists them under `[metadata] snapshot_include`; both are
 recorded in `environment/.materialized.json`.
 
+## Checking task quality
+
+```sh
+uv run fr task check tasks/<repo>/<slug> [--run cc-glm53flash-high-authoring] [--rubric rubric.toml]
+```
+
+Use this instead of `harbor check`, which runs its reviewer with its own environment
+and agent settings. `fr task check` assembles the reviewer task with Harbor's code and
+uses Harbor's default rubric unless `--rubric` is given. It runs the reviewer as a
+one-trial campaign on the shared Podman base with the selected run configuration.
+`environment/repo/` is left out of the reviewed copy. The reviewer's instruction
+describes the snapshot setup instead. The reviewer gets only the model endpoint. The
+wrapper task stays in `work/task-checks/<task>/<stamp>/`, and the per-criterion result
+is written to `results/task-check/<stamp>/<run>/check_report.json`.
+
 ## Sequential acceptance campaign
 
 `podman-acceptance` runs three oracle repeats per available task and spike. It

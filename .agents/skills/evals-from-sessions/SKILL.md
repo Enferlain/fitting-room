@@ -54,9 +54,10 @@ this section disagree, this section wins.
 - **GPU tasks are allowed.** Set `[metadata] gpu_vram_gb` and `[environment] gpus = 1`;
   `fr run` pins the GPU. Keep VRAM within one card that is not serving a model.
 - **Models and commands.** Smoke runs use `fr run` with a GLM or local-model run
-  config. Set the reasoning effort in that config. Record Harbor's built-in task
-  quality checker as unavailable for fitting-room snapshots until it supports the
-  fitting-room environment and store mounts.
+  config. Set the reasoning effort in that config. Run the task quality checker with
+  `fr task check <task> [--run <run config>]`, not `harbor check`: it uses Harbor's
+  rubric and prompt but runs on the Podman base through `fr run`. It leaves
+  `environment/repo/` out of the reviewed copy and tells the reviewer how snapshots work.
 - **Verifier mode:** set `[verifier] environment_mode = "shared"` explicitly; Harbor
   0.26's `harbor task init` defaults new tasks to `separate`.
 - **Repo path:** the trial starts at `/work/<repo>`, matching the source repo's name.
@@ -281,8 +282,8 @@ task. Commands are in the contract. Required evidence:
 6. **Leak probe**: run `assets/leak-probe.sh <task> <solution-strings.txt>` (strings
    only the reference diff contains, several per answer value). Expect one commit,
    no reflogs, remotes, tags or hooks, and zero string hits in the snapshot directory.
-7. **Task quality checker:** record its availability in `report.md` according to
-   the fitting-room override above. For a supported check, fix or justify each failure.
+7. **Task quality checker:** run `fr task check <task>` and record each criterion's
+   outcome in `report.md`. Fix or justify each failure.
 
 8. **Contract audit before the first smoke**: re-read the instruction sentence by
    sentence against the checks; remove or check every normative sentence now.
@@ -333,7 +334,7 @@ model, effort, reward, steps, cost, job path, classification); calibration flags
 - [ ] nop `0.0`; oracle `1.0` ×5; `alt-correct` `1.0`; every mutant `0.0`;
 - [ ] every normative sentence has a separating check; baselines are evaluator-owned;
 - [ ] no leaked strings, zero gitleaks hits, leak probe clean; evaluator files absent
-      from the snapshot; task quality checker status recorded;
+      from the snapshot; task quality check results recorded;
 - [ ] the last smoke run finished without infrastructure errors and is classified.
 
 Done means *ready for human review*, not accepted. Reviewer agents and then the user
