@@ -4,6 +4,11 @@ Landed progress, newest first. Planning and task status live under `openspec/cha
 
 ## 2026-11-21
 
+### Added
+
+- External task material from the 20–21 Nov research pass (48-candidate audit and seven batch-01 tasks validated on another host) is organized. Answer-free reference material is in [docs/external-tasks/](docs/external-tasks/README.md): coverage tags and grid, candidate index, scores, batch-01 runtime pins. Oracles, expected answers, author notes and trial trees stay out of the public repo, in gitignored `work/domain-tasks/`.
+- Proposed the OpenSpec change `external-task-track` (bead `fitting-room-841`) to port batch 01 to Harbor/Podman and add `fr tasks grid`. Sections 1.1–1.2 are done.
+
 ### Changed
 
 - Review fixes (section 6): (1) warmed Rust seeds no longer contain the repos' own workspace crates (`cargo clean -p` per workspace member after warming; native recipe 2). They were built from the canonical commit, newer than most task snapshots, so a trial could read later code (e.g. the Pliron crate's symbols in an N7-era task). Dependencies stay warm; trials compile their own crates from the snapshot: sd-scripts verifier 7 s, hcom `cargo test --no-run` 36 s, pytortch trial setup 92 s, all offline. (2) GLM runs are capped at 2 concurrent trials whatever the campaign asks (Harbor's default was 4). (3) `.gitignore` line endings normalized.

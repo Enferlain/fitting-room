@@ -1,0 +1,569 @@
+# fitting-room task tags. See task-coverage.md for the fields and their allowed values.
+# External entries were tagged from the 20 Nov 2026 audit archive. "evidence" refers to
+# upstream behavior; no variant has been validated yet.
+
+# --- Internal example: copy this block for each internal task ---
+# [[task]]
+# id = "I-myrepo-01"
+# track = "internal"
+# repo = "myrepo"
+# title = "..."
+# pattern = "bugfix"
+# domains = ["ml-compiler"]
+# languages = ["python"]
+# env = "cpu"
+# setup = 2
+# grading = "existing_tests"
+# demands = ["reproduce"]
+# familiarity = "own-code"
+# evidence = "validated"
+# contamination = "low"
+# status = "active"
+# notes = ""
+
+[[task]]
+id = "C01"
+track = "external"
+repo = "xdsl"
+title = "Erased-branch ops still visited by pass walker"
+pattern = "bugfix"
+domains = ["compiler-ir"]
+languages = ["python"]
+env = "cpu"
+setup = 1
+grading = "new_test"
+demands = ["reproduce", "unfamiliar-codebase"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "calibration"
+notes = "Pristine restore repairs core behavior"
+
+[[task]]
+id = "C02"
+track = "external"
+repo = "tinygrad"
+title = "Schedule/program/JIT reuse across CPU pipeline"
+pattern = "investigation"
+domains = ["ml-compiler"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["trace-cross-boundary", "measure-not-read", "unfamiliar-codebase"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "pilot"
+
+[[task]]
+id = "C03"
+track = "external"
+repo = "anyio"
+title = "Cancelled receivers starve live workers"
+pattern = "bugfix"
+domains = ["concurrency"]
+languages = ["python"]
+env = "cpu"
+setup = 1
+grading = "new_test"
+demands = ["reproduce"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "calibration"
+notes = "Pristine restore repairs core behavior"
+
+[[task]]
+id = "C04"
+track = "external"
+repo = "tokenizers"
+title = "encode_batch_dlpack with Rust-packed matrices"
+pattern = "feature"
+domains = ["native-interop"]
+languages = ["rust", "python"]
+env = "cpu"
+setup = 3
+grading = "new_test"
+demands = ["native-build", "trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "high"
+status = "pilot"
+notes = "Probe covers existing scalar exporters only"
+
+[[task]]
+id = "C05"
+track = "external"
+repo = "zarr"
+title = "Sharded partial reads ignore read limits on sync path"
+pattern = "bugfix"
+domains = ["data-storage"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "new_test"
+demands = ["reproduce", "measure-not-read"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "medium"
+status = "calibration"
+notes = "Perf-flavoured bugfix; pristine restore repairs it"
+
+[[task]]
+id = "C06"
+track = "external"
+repo = "pytest-xdist"
+title = "Worksteal ownership, prefetch and donor crash"
+pattern = "investigation"
+domains = ["concurrency", "build-tooling"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["trace-cross-boundary", "measure-not-read"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "pilot"
+notes = "Rubric detail in private author notes"
+
+[[task]]
+id = "C07"
+track = "external"
+repo = "pluggy"
+title = "Entry-point bookkeeping refactor review"
+pattern = "review"
+domains = ["build-tooling"]
+languages = ["python"]
+env = "cpu"
+setup = 1
+grading = "new_test"
+demands = ["judge-claims", "reproduce"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "high"
+status = "reserve"
+notes = "Cheap review control"
+
+[[task]]
+id = "C08"
+track = "external"
+repo = "ninja"
+title = "Mixed-output pruning vs build-log timestamps"
+pattern = "investigation"
+domains = ["build-tooling"]
+languages = ["cpp"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["measure-not-read", "unfamiliar-codebase"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "pilot"
+
+[[task]]
+id = "C09"
+track = "external"
+repo = "egg"
+title = "Pause/serialize/resume a Runner"
+pattern = "design"
+domains = ["compiler-ir"]
+languages = ["rust"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["ambiguous-spec", "judge-claims"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "reserve"
+
+[[task]]
+id = "C10"
+track = "external"
+repo = "lark"
+title = "Interactive parser continuations share lexer counter"
+pattern = "bugfix"
+domains = ["compiler-ir"]
+languages = ["python"]
+env = "cpu"
+setup = 1
+grading = "new_test"
+demands = ["reproduce"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "dropped"
+notes = "Source-restorable injection"
+
+[[task]]
+id = "C11"
+track = "external"
+repo = "mcp-python-sdk"
+title = "Mapping metadata in structured output schema"
+pattern = "feature"
+domains = ["agent-infra"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "new_test"
+demands = []
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "deferred"
+notes = "Visible TODO narrows task"
+
+[[task]]
+id = "C12"
+track = "external"
+repo = "accelerate"
+title = "Scoped save/load pre-hook context manager"
+pattern = "feature"
+domains = ["ml-training"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "new_test"
+demands = ["ambiguous-spec"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "low"
+status = "reserve"
+
+[[task]]
+id = "C13"
+track = "external"
+repo = "meson"
+title = "In-process CMake probe cache refactor review"
+pattern = "review"
+domains = ["build-tooling"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "new_test"
+demands = ["judge-claims", "reproduce"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "pilot"
+notes = "Staged regression; pristine restore earns behavior points only"
+
+[[task]]
+id = "C14"
+track = "external"
+repo = "maturin"
+title = "PGO training-group migration guide"
+pattern = "docs"
+domains = ["build-tooling", "native-interop"]
+languages = ["rust", "python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = []
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "deferred"
+notes = "Public guide reveals happy path"
+
+[[task]]
+id = "C15"
+track = "external"
+repo = "dask-distributed"
+title = "Fresh worker-identity snapshot API"
+pattern = "design"
+domains = ["concurrency"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["ambiguous-spec"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "medium"
+status = "reserve"
+
+[[task]]
+id = "C16"
+track = "external"
+repo = "xarray"
+title = "Rolling argmin offset near centered edges"
+pattern = "bugfix"
+domains = ["numerics"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "new_test"
+demands = ["reproduce"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "dropped"
+notes = "Source-restorable injection"
+
+[[task]]
+id = "C17"
+track = "external"
+repo = "safetensors"
+title = "Prefetch loader ownership on close/failure"
+pattern = "investigation"
+domains = ["ml-runtime", "native-interop"]
+languages = ["rust", "python"]
+env = "gpu-optional"
+setup = 5
+grading = "checkable_answer"
+demands = ["trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "reserve"
+
+[[task]]
+id = "C35"
+track = "external"
+repo = "pytorch"
+title = "Two-output data-dependent custom op"
+pattern = "feature"
+domains = ["ml-compiler"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "new_test"
+demands = ["trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "high"
+status = "pilot-pending"
+notes = "Gate: two-output shared-symbolic fixture must run"
+
+[[task]]
+id = "C36"
+track = "external"
+repo = "pytorch"
+title = "Attribute CPU recompile burst and wrapper handoff"
+pattern = "investigation"
+domains = ["ml-compiler"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["measure-not-read", "trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "reserve"
+
+[[task]]
+id = "C37"
+track = "external"
+repo = "pybind11"
+title = "Global Python-object cache under 3.14t and subinterpreters"
+pattern = "review"
+domains = ["native-interop", "concurrency"]
+languages = ["cpp", "python"]
+env = "cpu"
+setup = 3
+grading = "checkable_answer"
+demands = ["judge-claims"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "medium"
+status = "hold"
+notes = "Possibly answerable from pybind11 docs"
+
+[[task]]
+id = "C38"
+track = "external"
+repo = "llama.cpp"
+title = "Sequence-state save/restore and isolation"
+pattern = "investigation"
+domains = ["ml-runtime"]
+languages = ["cpp"]
+env = "cpu"
+setup = 3
+grading = "checkable_answer"
+demands = ["native-build", "measure-not-read"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "medium"
+status = "reserve"
+
+[[task]]
+id = "C39"
+track = "external"
+repo = "torchao"
+title = "PT2E 4-bit groupwise representation across export"
+pattern = "investigation"
+domains = ["ml-compiler"]
+languages = ["python"]
+env = "cpu"
+setup = 3
+grading = "checkable_answer"
+demands = ["trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "high"
+status = "reserve"
+
+[[task]]
+id = "C40"
+track = "external"
+repo = "triton"
+title = "Masked tail reduction lowering to sm86"
+pattern = "investigation"
+domains = ["ml-compiler"]
+languages = ["python", "cuda"]
+env = "gpu-optional"
+setup = 3
+grading = "checkable_answer"
+demands = ["trace-cross-boundary", "judge-claims"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "reserve"
+notes = "Offline codegen works without GPU"
+
+[[task]]
+id = "C41"
+track = "external"
+repo = "wasmtime/cranelift"
+title = "x64 shift-count simplification review"
+pattern = "review"
+domains = ["compiler-ir"]
+languages = ["rust"]
+env = "cpu"
+setup = 3
+grading = "checkable_answer"
+demands = ["judge-claims"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "low"
+status = "lead"
+
+[[task]]
+id = "C42"
+track = "external"
+repo = "pliron"
+title = "Nested mem2reg through branch interfaces"
+pattern = "investigation"
+domains = ["compiler-ir"]
+languages = ["rust"]
+env = "cpu"
+setup = 4
+grading = "checkable_answer"
+demands = ["trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "lead"
+notes = "Needs LLVM 23.1 or standalone fixture"
+
+[[task]]
+id = "C43"
+track = "external"
+repo = "datafusion"
+title = "Sort-property propagation through time bucketing"
+pattern = "investigation"
+domains = ["compiler-ir", "data-storage"]
+languages = ["rust"]
+env = "cpu"
+setup = 4
+grading = "checkable_answer"
+demands = ["trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "high"
+status = "lead"
+
+[[task]]
+id = "C44"
+track = "external"
+repo = "pydantic-ai"
+title = "Tool retry accounting across runs"
+pattern = "investigation"
+domains = ["agent-infra"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["measure-not-read"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "medium"
+status = "hold"
+notes = "Easy default answer"
+
+[[task]]
+id = "C45"
+track = "external"
+repo = "langgraph"
+title = "Latest resume vs explicit checkpoint replay"
+pattern = "investigation"
+domains = ["agent-infra"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["measure-not-read"]
+familiarity = "unfamiliar"
+evidence = "probed"
+contamination = "medium"
+status = "pilot"
+notes = "Watch for saturation"
+
+[[task]]
+id = "C46"
+track = "external"
+repo = "sandbox-runtime"
+title = "Sandbox manager setup/teardown ownership"
+pattern = "design"
+domains = ["agent-infra"]
+languages = ["typescript"]
+env = "cpu"
+setup = 3
+grading = "checkable_answer"
+demands = ["ambiguous-spec"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "medium"
+status = "lead"
+notes = "Anthropic-owned repo"
+
+[[task]]
+id = "C47"
+track = "external"
+repo = "flashinfer"
+title = "Paged KV plan vs CUDA graph replay"
+pattern = "design"
+domains = ["ml-runtime"]
+languages = ["python", "cuda"]
+env = "gpu-required"
+setup = 5
+grading = "checkable_answer"
+demands = ["measure-not-read"]
+familiarity = "unfamiliar"
+evidence = "source"
+contamination = "medium"
+status = "lead"
+notes = "Gate on FA2 replay on pinned GPU"
+
+[[task]]
+id = "C48"
+track = "external"
+repo = "openai-agents"
+title = "Approval decisions across serialize/resume"
+pattern = "investigation"
+domains = ["agent-infra"]
+languages = ["python"]
+env = "cpu"
+setup = 2
+grading = "checkable_answer"
+demands = ["trace-cross-boundary"]
+familiarity = "unfamiliar"
+evidence = "adjacent"
+contamination = "medium"
+status = "hold"
+notes = "Evidence is stock tests only"
