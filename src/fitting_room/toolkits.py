@@ -17,7 +17,6 @@ import json
 import os
 import re
 import shlex
-import shutil
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -54,7 +53,6 @@ class Item:
 class Toolkit:
     name: str
     path: Path
-    dockerfile_append: str = ""
     store: dict[str, str] = field(default_factory=dict)
     announce: bool = False
     items: list[Item] = field(default_factory=list)
@@ -101,12 +99,11 @@ def load_toolkit(toolkits_dir: Path, name: str) -> Toolkit:
         or any(not isinstance(pin, str) or not re.fullmatch(SEMVER, pin) for pin in store.values())
     ):
         raise ValueError(f"toolkit {name}: [store] accepts pinned bd and openspec versions")
-    if store and cfg.get("dockerfile_append", "").strip():
-        raise ValueError(f"toolkit {name}: [store] cannot be combined with dockerfile_append")
+    if "dockerfile_append" in cfg:
+        raise ValueError(f"toolkit {name}: replace dockerfile_append with [store] pins")
     return Toolkit(
         name=name,
         path=path,
-        dockerfile_append=cfg.get("dockerfile_append", ""),
         store=store,
         announce=bool(cfg.get("announce", False)),
         items=items,
@@ -181,36 +178,3 @@ install -m 755 "$(find "$tmp" -type f -name bd -print -quit)" bin/bd
             staged.write_text(digest + "\n")
             staged.replace(manifest)
     return path
-
-
-def stage_tasks(task_dirs: list[Path], toolkit: Toolkit, staging: Path) -> list[Path]:
-    """Hardlinked copies of the tasks with the toolkit's image layer appended."""
-    if toolkit.store:
-        raise StoreError(f"Toolkit '{toolkit.name}' requires a Podman task")
-    if not toolkit.dockerfile_append.strip():
-        return list(task_dirs)
-    out = []
-    for src in task_dirs:
-        dest = staging / toolkit.name / src.name
-        if dest.exists():
-            shutil.rmtree(dest)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(src, dest, copy_function=_link_or_copy, symlinks=True)
-        dockerfile = dest / "environment" / "Dockerfile"
-        text = dockerfile.read_text()
-        dockerfile.unlink()  # break the hardlink before editing
-        dockerfile.write_text(
-            text.rstrip("\n")
-            + f"\n\n# fr toolkit: {toolkit.name}\n"
-            + toolkit.dockerfile_append.strip("\n")
-            + "\n"
-        )
-        out.append(dest)
-    return out
-
-
-def _link_or_copy(src: str, dst: str) -> None:
-    try:
-        Path(dst).hardlink_to(src)
-    except OSError:
-        shutil.copy2(src, dst)

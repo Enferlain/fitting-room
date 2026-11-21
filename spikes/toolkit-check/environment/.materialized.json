@@ -1,8 +1,11 @@
 {
  "repo": "hermes-agora",
  "commit": "b140aefb03e7342c5119509a84c70a78fc8112f7",
- "files": 142,
- "stripped": [],
+ "snapshot_commit": "4923cb929e975c6ea2079d4a6fed26addb56435e",
+ "files": 141,
+ "stripped": [
+  ".beads/metadata.json"
+ ],
  "excluded_patterns": [],
  "excluded_files": 0,
  "included_back": [],

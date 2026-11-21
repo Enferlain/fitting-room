@@ -27,7 +27,20 @@ from fitting_room.store import StoreError, building_entry, store_lock
 from fitting_room.tasks.materialize import REPO_CONFIGS, _matches, repo_excludes, repo_path
 
 RUSTUP_URL = "https://sh.rustup.rs"
-RECIPE = 1
+#: 2: the repo's own workspace crates are removed from warmed targets (they were built
+#: from the canonical commit, newer than most task snapshots, and must not leak into them).
+RECIPE = 2
+#: Shell helper run after warming: drop every workspace member's artifacts so only
+#: dependencies (crates.io, vendored path deps outside the workspace) stay warm.
+CLEAN_OWN = r"""
+clean_own() {
+    cargo metadata --no-deps --offline --locked --format-version 1 --manifest-path "$1" |
+        jq -r '.packages[].name' | sort -u | while read -r package; do
+            cargo clean --offline -p "$package" --manifest-path "$1"
+            cargo clean --offline -p "$package" --manifest-path "$1" --release
+        done
+}
+"""
 
 
 def native_key(repo: str, config: dict, configs: Path) -> str:
@@ -119,7 +132,11 @@ def _warm(repo: str, config: dict, dest: Path, configs: Path, python: Path | Non
     if config["kind"] == "rust":
         env["CARGO_TARGET_DIR"] = CARGO_TARGET
         mounts.append(f"{dest / 'target'}:{CARGO_TARGET}")
-        script += "cargo fetch --locked\ncargo test --workspace --locked --offline --no-run"
+        script += (
+            "cargo fetch --locked\ncargo test --workspace --locked --offline --no-run\n"
+            + CLEAN_OWN
+            + "clean_own Cargo.toml"
+        )
     elif config["kind"] == "python+rust":
         # One shared target dir for every manifest, as trials set CARGO_TARGET_DIR.
         env["CARGO_TARGET_DIR"] = CARGO_TARGET
@@ -130,6 +147,11 @@ def _warm(repo: str, config: dict, dest: Path, configs: Path, python: Path | Non
                 f"\ncargo fetch --locked --manifest-path {path}"
                 f"\ncargo test --locked --offline --no-run --manifest-path {path}"
             )
+        script += (
+            "\n"
+            + CLEAN_OWN
+            + "\n".join(f"clean_own {shlex.quote(m)}" for m in rust_manifests(repo, config))
+        )
     else:
         assert python is not None
         tree = python.parent.parent
@@ -149,7 +171,10 @@ def _warm(repo: str, config: dict, dest: Path, configs: Path, python: Path | Non
             "git -c init.defaultBranch=main init -q\n"
             "git add -A && git -c user.name=benchmark -c user.email=benchmark@local"
             " commit -qm benchmark\n"
-            "cubecl_torch/native/build.sh"
+            "cubecl_torch/native/build.sh\n"
+            + CLEAN_OWN
+            + "clean_own cubecl_torch/native/Cargo.toml\n"
+            "clean_own cubecl_torch/native/bridge/Cargo.toml"
         )
     for name in ("cargo", "rustup", "target", "bridge-target"):
         (dest / name).mkdir()

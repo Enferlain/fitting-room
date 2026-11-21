@@ -26,8 +26,8 @@ environment_mode = "shared"  # explicit: Harbor 0.26 task init defaults to "sepa
 timeout_sec = 3600.0
 
 [environment]
+docker_image = "fr-base/cpu:1"
 network_mode = "public"   # web is part of the suite; repos with a public upstream need the remote blocked
-build_timeout_sec = 600.0
 cpus = 2
 memory_mb = 2048
 storage_mb = 4096

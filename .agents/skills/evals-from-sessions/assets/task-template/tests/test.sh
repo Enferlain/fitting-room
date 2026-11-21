@@ -4,5 +4,5 @@
 mkdir -p /logs/verifier
 reward=0
 trap 'echo "$reward" > /logs/verifier/reward.txt' EXIT
-python3 /tests/verify.py && reward=1
+"${VIRTUAL_ENV:?Set the task verifier interpreter}/bin/python" /tests/verify.py && reward=1
 exit 0

@@ -2,7 +2,8 @@
 # Pass iff CUDA (not nvidia-smi, which ignores CUDA_VISIBLE_DEVICES) sees exactly one device,
 # and, when EXPECT_GPU is set, that device's name contains it.
 mkdir -p /logs/verifier
-python3 /tests/cudacount.py > /logs/verifier/gpus.txt 2>&1
+(cc -Wall -Wextra /tests/cudacount.c -o /tmp/cudacount -ldl && /tmp/cudacount) \
+    > /logs/verifier/gpus.txt 2>&1
 echo "CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}" >> /logs/verifier/gpus.txt
 cat /logs/verifier/gpus.txt
 n=$(grep -c '^[0-9] ' /logs/verifier/gpus.txt)

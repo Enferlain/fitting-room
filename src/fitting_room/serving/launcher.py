@@ -5,7 +5,7 @@ On this host llama-swap and llama-server are Windows binaries, so the profile is
 launched through PowerShell, which returns the real Windows PID. ``down`` stops exactly
 that process tree. Name-based kills are never used, so an everyday llama-swap that
 happens to be running is never touched. With WSL mirrored networking, the profile
-listening on 127.0.0.1 is reachable from WSL and, via host.docker.internal, from
+listening on 127.0.0.1 is reachable from WSL and, via host.containers.internal, from
 Harbor sandboxes.
 """
 

@@ -14,6 +14,7 @@ from fitting_room.config import (
     TaskSelector,
     load_campaign,
 )
+from fitting_room.podman_host import BASE_IMAGE
 from fitting_room.provenance import SIDECAR_NAME
 from fitting_room.runner import JOB_CONFIG_NAME, run_campaign, trial_dirs
 
@@ -28,12 +29,23 @@ def ROOT(tmp_path: Path) -> ConfigRoot:
     return ConfigRoot(cfg)
 
 
+@pytest.fixture(autouse=True)
+def podman_fixture(tmp_path, monkeypatch):
+    from fitting_room import runner
+
+    monkeypatch.setattr(runner, "podman_host_env", lambda: {})
+    monkeypatch.setattr(runner, "check_storage", lambda *_: {"FR_STORE": tmp_path / "store"})
+    monkeypatch.setattr(
+        runner, "ensure_harness", lambda name, pin, store: store / "harness" / name / pin
+    )
+
+
 def make_campaign(tmp_path: Path, runs: list[RunConfig], repeats: int = 3) -> Campaign:
     tasks = []
     for name in ("t1", "t2"):
         d = tmp_path / "tasks" / name
         d.mkdir(parents=True)
-        (d / "task.toml").write_text("")
+        (d / "task.toml").write_text(f'[environment]\ndocker_image = "{BASE_IMAGE}"\n')
         tasks.append(d)
     cfg = CampaignConfig(
         name="camp",
@@ -91,7 +103,7 @@ def test_agent_timeout_multiplier_is_forwarded_to_harbor(tmp_path):
     (root.runs / "a.toml").write_text('harness = "oracle"\n')
     root.campaigns.mkdir()
     (root.campaigns / "camp.toml").write_text(
-        'runs = ["a"]\nagent_timeout_multiplier = 2.0\n[tasks]\ninclude = ["tasks/*"]\n'
+        'runs = ["a"]\nagent_timeout_multiplier = 2.0\nn_concurrent_trials = 1\n[tasks]\ninclude = ["tasks/*"]\n'
     )
     camp = load_campaign("camp", root, tmp_path)
     calls: list[dict] = []
@@ -101,6 +113,7 @@ def test_agent_timeout_multiplier_is_forwarded_to_harbor(tmp_path):
     del cfg["_host_env"]
     job = JobConfig.model_validate(cfg)
     assert job.agent_timeout_multiplier == 2.0
+    assert job.n_concurrent_trials == 1
     assert job.timeout_multiplier == 1.0
     assert job.verifier_timeout_multiplier is None
     assert job.agent_setup_timeout_multiplier is None
@@ -173,7 +186,7 @@ def test_claude_code_glm_mapping_uses_placeholder_and_ca_overlay(tmp_path, monke
     )
     (cfg,) = calls
     agent = cfg["agents"][0]
-    assert agent["name"] == "claude-code"
+    assert agent["import_path"] == "fitting_room.adapters.pinned:FrClaudeCode"
     assert agent["model_name"] == "anthropic/glm-5.3-flash"
     assert agent["base_url"] == "https://api.z.ai/api/anthropic"
     assert agent["model_api_key_name"] == "ANTHROPIC_AUTH_TOKEN"
@@ -254,7 +267,7 @@ def test_hermes_mappings():
     )  # fmt: skip
     # Hermes rejects keys that look like placeholders ("placeholder", "dummy", "sk-...").
     assert local.env["OPENAI_API_KEY"] == "no-key-required"
-    assert local.base_url.startswith("http://host.docker.internal")
+    assert local.base_url.startswith("http://host.containers.internal")
 
 
 def test_hermes_refuses_thinking_off():
@@ -273,7 +286,8 @@ def test_codex_local_mapping_and_no_host_login(monkeypatch, tmp_path):
         RunConfig(name="c", harness="codex", harness_version="0.163.0", model="local/qwen3.5-9b",
                   effort="medium", serving_profile="qwen35-9b-3080")
     )  # fmt: skip
-    assert spec.name == "codex" and spec.base_url.endswith("/v1")
+    assert spec.import_path == "fitting_room.adapters.pinned:FrCodex"
+    assert spec.base_url.endswith("/v1")
     assert spec.kwargs["reasoning_effort"] == "medium"
     # Harbor uploads ~/.codex/auth.json when these are set; fr never passes them on.
     seen = {}
@@ -289,7 +303,6 @@ def _dev_stack(cfg_root: ConfigRoot) -> None:
     (tk / "skills" / "cbm" / "SKILL.md").write_text("---\nname: cbm\n---\n")
     (tk / "toolkit.toml").write_text(
         'name = "dev-stack"\n'
-        'dockerfile_append = "RUN /opt/fr-toolkit/setup.sh"\n'
         '[[items]]\nname = "bd"\nkind = "cli"\n'
         '[[items]]\nname = "codebase-memory"\nkind = "mcp"\ncommand = "codebase-memory-mcp"\n'
         '[[items]]\nname = "cbm-skill"\nkind = "skill"\npath = "skills/cbm"\n'
@@ -302,32 +315,17 @@ def _local_run(harness: str, version: str, toolkit: str) -> RunConfig:
                      serving_profile="qwen35-9b-3080")  # fmt: skip
 
 
-def test_dev_stack_stages_tasks_and_registers_mcp_and_skills(tmp_path):
+def test_toolkit_registers_mcp_and_skills(tmp_path):
     root = ROOT(tmp_path)
     _dev_stack(root)
     camp = make_campaign(tmp_path, [_local_run("codex", "0.163.0", "dev-stack")], repeats=1)
-    for d in camp.task_dirs:
-        (d / "environment").mkdir()
-        (d / "environment" / "Dockerfile").write_text("FROM fr-repo/x:latest\n")
     calls: list[dict] = []
     run_campaign(camp, tmp_path / "results", root, invoke=fake_harbor(calls), now=NOW,
                  work_dir=tmp_path / "work", endpoint_check=lambda _: True)  # fmt: skip
     agent = calls[0]["agents"][0]
     assert agent["mcp_servers"][0]["command"] == "codebase-memory-mcp"
     assert agent["skills"][0].endswith("skills/cbm")
-    staged = Path(calls[0]["tasks"][0]["path"])
-    assert staged.is_relative_to(tmp_path / "work" / "staged" / "dev-stack")
-    assert (
-        staged.joinpath("environment/Dockerfile")
-        .read_text()
-        .endswith("RUN /opt/fr-toolkit/setup.sh\n")
-    )
-    # The original task is untouched; other files are hardlinks, not copies.
-    original = camp.task_dirs[0]
-    assert original.joinpath("environment/Dockerfile").read_text() == "FROM fr-repo/x:latest\n"
-    assert (
-        staged.joinpath("task.toml").stat().st_ino == original.joinpath("task.toml").stat().st_ino
-    )
+    assert [Path(task["path"]) for task in calls[0]["tasks"]] == camp.task_dirs
 
 
 def test_toolkit_none_adds_nothing(tmp_path):
@@ -357,7 +355,6 @@ def test_harness_without_item_support_refused(tmp_path):
 
 def test_podman_runner_uses_one_canonical_env_for_all_repo_tasks(tmp_path, monkeypatch):
     from fitting_room import runner
-    from fitting_room.podman_host import BASE_IMAGE
 
     run = RunConfig(name="oracle", harness="oracle")
     campaign = make_campaign(tmp_path, [run], repeats=1)
@@ -434,7 +431,6 @@ def test_podman_compose_mounts_and_pins_only_gpu_tasks(tmp_path):
     ("gpus", "uuid"), [(2, "GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"), (1, "GPU-invalid")]
 )
 def test_podman_refuses_invalid_gpu_request_before_provisioning(tmp_path, gpus, uuid):
-    from fitting_room.podman_host import BASE_IMAGE
     from fitting_room.runner import _podman_tasks
     from fitting_room.store import StoreError
 
@@ -478,7 +474,6 @@ def test_pytortch_uses_read_only_llvm_seed_at_warmed_path(tmp_path):
 
 def test_podman_runner_provisions_harness_and_toolkit_before_harbor(tmp_path, monkeypatch):
     from fitting_room import runner
-    from fitting_room.podman_host import BASE_IMAGE
 
     root = ROOT(tmp_path)
     dev_stack = root.toolkits / "dev-stack"
@@ -529,3 +524,16 @@ def test_podman_runner_provisions_harness_and_toolkit_before_harbor(tmp_path, mo
         endpoint_check=lambda _: True,
     )
     assert steps == ["harness", "toolkit", "harbor"]
+
+
+def test_glm_runs_never_exceed_two_concurrent_trials():
+    from fitting_room.config import RunConfig
+    from fitting_room.runner import concurrent_trials
+
+    glm = RunConfig(
+        name="g", harness="omp", harness_version="1.0.0", model="zai/glm-5.3", effort="high"
+    )
+    local = RunConfig(name="l", harness="oracle", model=None)
+    assert concurrent_trials(glm, 4) == 2
+    assert concurrent_trials(glm, 1) == 1
+    assert concurrent_trials(local, 4) == 4

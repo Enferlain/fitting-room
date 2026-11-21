@@ -32,7 +32,7 @@ Harbor (pinned version in `pyproject.toml`, managed by `uv`) runs trials, builds
 *Alternatives:* Inspect AI + inspect_swe (easier local-model proxying, but weak multi-turn support and Python-defined tasks); own runner (most work, no ecosystem). Harbor wins on adapter coverage, file-based tasks, multi-step and simulated-user support for the planned follow-up, the ATIF trajectory format, and compatibility with `evals-from-sessions`.
 
 ### D2. Docker backend now, OpenShell later behind the same interface
-> **Being replaced (2026-11-19)** by change `podman-trial-environments`: rootless Podman in WSL, one base image, heavy state mounted from a store, no per-task builds. Keep this text until that change's spike (its tasks 2.x) passes.
+> **Superseded by [Podman trial environments](../podman-trial-environments/design.md).** The active backend uses rootless Podman, a shared base image and read-only store mounts. The original decision is recorded below.
 
 Use Harbor's built-in Docker environment. OpenShell becomes a `BaseEnvironment` subclass in a follow-up change. Risk-reduction spikes come first (task 2): GPU passthrough via `--gpus`, network allowlist enforcement, and `host.docker.internal` reachability in Harbor's Docker environment. If Harbor's Docker environment lacks a needed feature, we subclass it rather than fork Harbor.
 
@@ -52,7 +52,7 @@ configs/
   toolkits/<name>/             # toolkit definition (D13)
   serving/<name>.yaml          # standalone llama-swap config per scenario
   prices.toml                  # per-model token prices for hosted models
-images/<repo>/Dockerfile       # per-repo base images (D8)
+images/base-cpu/Dockerfile     # shared Podman trial image
 tasks/<repo>/<task>/           # task definitions (repo snapshot NOT committed)
 .agents/skills/evals-from-sessions/   # vendored skill (D12); .claude/skills symlink
 work/                          # gitignored: mining output, materialized snapshots
@@ -83,7 +83,7 @@ All adapters start from an empty harness home, so no host config, memories, skil
 Stdlib Python. One reader per source (Codex JSONL, Claude JSONL, Hermes SQLite opened with `mode=ro`, omp JSONL) yields episodes into one record type (spec: session-mining). Commit inference for Claude/omp/Hermes uses `git rev-list -1 --before=<start> <branch>` in the local repo. Subagent detection: Codex `thread_source == "subagent"`, Claude `subagents/` paths, Hermes `parent_session_id`. Output goes to `work/mining/candidates.{md,jsonl}`, scanned with gitleaks and redacted before writing (regex fallback if gitleaks is missing, with a warning). The miner does not judge task quality beyond a heuristic track suggestion: selection is the human checkpoint.
 
 ### D8. Per-repo base images, snapshots materialized at run time
-> **Being replaced (2026-11-19)** by change `podman-trial-environments`: rootless Podman in WSL, one base image, heavy state mounted from a store, no per-task builds. Keep this text until that change's spike (its tasks 2.x) passes.
+> **Superseded by [Podman trial environments](../podman-trial-environments/design.md).** The active backend uses rootless Podman, a shared base image and read-only store mounts. The original decision is recorded below.
 
 Heavy repos (sd-scripts, the PyTorch backend) get a shared base image with dependencies and CUDA, built once in `images/<repo>/`. Each task's Dockerfile is `FROM` that base and copies `environment/repo/`. `environment/repo/` is produced by `fr task materialize` (`git archive <commit>` from the local repo, using the source repo and commit recorded in `task.toml`) and is gitignored. This keeps private code and large snapshots out of git, and lets tasks be rebuilt exactly. Dependency drift between the base image and a task's commit is caught by validation (the oracle must pass 5/5).
 

@@ -1,0 +1,10 @@
+# Warm-store acceptance. Prepare repo-backed snapshots and the host probe first.
+runs = ["test-oracle-devstack"]
+repeats = 3
+n_concurrent_trials = 1
+
+[tasks]
+include = ["spikes/*", "tasks/*/*"]
+
+[gpu]
+task_gpu = "GPU-510ddc27-95ac-c62f-d49b-242cc5183c72"

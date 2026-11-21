@@ -4,10 +4,7 @@ Harbor's agent already runs a one-shot ``hermes --yolo chat -q`` with a fresh
 ``HERMES_HOME=/tmp/hermes`` (no host config, memory off), exports the session and converts
 it to ATIF with token counts. Differences handled here:
 
-- pin by commit: the installer's ``--commit`` takes a SHA, while Harbor passes the version
-  as ``--branch`` (a branch name only);
-- no browser or computer-use install: Playwright, Chromium and fonts take most of a
-  14-minute install, and tasks run on an allowlisted network where they can't be used;
+- the store provides a commit-pinned CLI without browser or computer-use dependencies;
 - token counts: Harbor sums per-message usage, which local (llama.cpp) runs leave empty;
   the session export's own totals are used when Harbor finds none;
 - reasoning effort: Harbor never sets one; GLM must not run with thinking off, so the
@@ -29,11 +26,6 @@ from harbor.models.agent.context import AgentContext
 from pydantic import Field
 
 from fitting_room.adapters.pinned import PinnedInstall
-from fitting_room.environments.podman import FrPodmanEnvironment
-
-# The installer from main assumes main's layout; use the one from the pinned commit.
-INSTALL_SH = "https://raw.githubusercontent.com/NousResearch/hermes-agent/{sha}/scripts/install.sh"
-_SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 class FrHermesOptions(HermesOptions):
@@ -60,27 +52,6 @@ class FrHermes(PinnedInstall, Hermes):
     @property
     def _reasoning_effort(self) -> str:
         return self.options.reasoning_effort
-
-    async def install(self, environment: BaseEnvironment) -> None:
-        if isinstance(environment, FrPodmanEnvironment):
-            await super().install(environment)
-            return
-        if not (self._version and _SHA.match(self._version)):
-            raise ValueError("pin Hermes by full commit SHA (harness_version)")
-        await self.ensure_system_dependencies(environment, ("curl", "git", "ripgrep", "xz"))
-        await self.exec_as_agent(
-            environment,
-            command=(
-                "set -euo pipefail; "
-                f"curl -fsSL {INSTALL_SH.format(sha=self._version)} | bash -s -- "
-                "--skip-setup --skip-browser --skip-computer-use "
-                f"--commit {shlex.quote(self._version)} && "
-                'export PATH="$HOME/.local/bin:$PATH" && '
-                'export HERMES_HOME="${HERMES_HOME:-/tmp/hermes}" && '
-                'mkdir -p "$HERMES_HOME" "$HERMES_HOME/sessions" "$HERMES_HOME/skills" '
-                '"$HERMES_HOME/memories" && hermes --version'
-            ),
-        )
 
     def get_version_command(self) -> str | None:
         # This release has no `hermes version` subcommand (Harbor's default).

@@ -10,9 +10,9 @@ Per-harness notes (task 4.7 will complete this). Harbor 0.26.0 ships built-in ag
 | Codex | 0.163.0 (`~/.local/bin/codex`) | Local models only (user decision 2026-11-17: no GLM pairing for Codex). Responses API only (`wire_api = "chat"` was removed), so a local backend must serve `/v1/responses`; llama.cpp b12236 does, including streamed function calls. Harbor's built-in `codex` agent is used as is. `fr run` strips `CODEX_AUTH_JSON_PATH` / `CODEX_FORCE_AUTH_JSON` so the host ChatGPT login is never uploaded. |
 | Claude Code | 2.1.263 | GLM through `https://api.z.ai/api/anthropic` with a placeholder token (Agent Vault substitutes the real key). |
 | Hermes | v0.0.0 (2026.9.24), upstream `27e38935` (nix); benchmark pin `f97608f1` (`v2026.9.24`) | Adapter `fitting_room.adapters.hermes:FrHermes`, a thin subclass of Harbor's `hermes` agent; see docs/spikes.md 4.1 for what it changes. |
-| Oh My Pi | 18.12.6 (nix profile; npm `@oh-my-pi/pi-coding-agent`) | Adapter `fitting_room.adapters.omp:OhMyPi`, a thin subclass of Harbor's `pi` agent: installs Bun 1.3.14 + the npm package, runs `omp -p --mode json --approval-mode yolo`. Harbor's Pi trajectory/usage parsing works unchanged. Built-in `zai` provider reads `ZAI_API_KEY`. Day-to-day default `zai/glm-5.3:max`. |
+| Oh My Pi | 18.12.6 (nix profile; npm `@oh-my-pi/pi-coding-agent`) | Adapter `fitting_room.adapters.omp:OhMyPi`, a thin subclass of Harbor's `pi` agent: uses the pinned standalone binary from the store, runs `omp -p --mode json --approval-mode yolo`. Harbor's Pi trajectory/usage parsing works unchanged. Built-in `zai` provider reads `ZAI_API_KEY`. Day-to-day default `zai/glm-5.3:max`. |
 
-## Local model smoke results
+## Historical local-model smoke results
 
 Serving profile `qwen35-9b-3080` (`uv run fr serve up qwen35-9b-3080`), task `spikes/hello`:
 
@@ -24,9 +24,9 @@ Serving profile `qwen35-9b-3080` (`uv run fr serve up qwen35-9b-3080`), task `sp
 
 llama.cpp ignores the API key; the local placeholder is `no-key-required` because Hermes rejects obvious placeholders.
 
-## GLM smoke results (via Agent Vault)
+## Agent Vault and historical GLM smoke results
 
-Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude models). Sandboxes never hold a real key: Agent Vault on the host intercepts `api.z.ai` (containers resolve it to its FakeIP range through Docker Desktop's DNS forwarding) and substitutes the key in-flight. The container only needs Agent Vault's **public** root CA, mounted by a run-level overlay that sets `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`. Without it, TLS verification fails (`verify=20`).
+Benchmarks use GLM 5.3 / GLM 5.3 Flash and local models only (no GPT or Claude models). Sandboxes never hold a real key: Agent Vault on the host intercepts `api.z.ai` (containers resolve it to its FakeIP range through Podman) and substitutes the key in-flight. The container only needs Agent Vault's **public** root CA, mounted by a run-level overlay that sets `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE`. Without it, TLS verification fails (`verify=20`).
 
 | Harness | Command | Result |
 |---|---|---|

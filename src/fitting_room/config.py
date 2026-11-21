@@ -132,6 +132,7 @@ class CampaignConfig(BaseModel):
     name: str
     runs: list[str] = Field(min_length=1)
     repeats: int = Field(default=3, ge=1)
+    n_concurrent_trials: int = Field(default=4, ge=1, strict=True)
     agent_timeout_multiplier: float | None = Field(
         default=None, gt=0, strict=True, allow_inf_nan=False
     )

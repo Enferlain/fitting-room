@@ -2,6 +2,29 @@
 
 Landed progress, newest first. Planning and task status live under `openspec/changes/`.
 
+## 2026-11-21
+
+### Changed
+
+- Review fixes (section 6): (1) warmed Rust seeds no longer contain the repos' own workspace crates (`cargo clean -p` per workspace member after warming; native recipe 2). They were built from the canonical commit, newer than most task snapshots, so a trial could read later code (e.g. the Pliron crate's symbols in an N7-era task). Dependencies stay warm; trials compile their own crates from the snapshot: sd-scripts verifier 7 s, hcom `cargo test --no-run` 36 s, pytortch trial setup 92 s, all offline. (2) GLM runs are capped at 2 concurrent trials whatever the campaign asks (Harbor's default was 4). (3) `.gitignore` line endings normalized.
+- `fr task materialize` now builds a single-commit snapshot on the host, strips
+  Beads connection state, and records both the source and snapshot commits.
+  The leak probe checks the snapshot directory and Git objects directly.
+- Retired the Docker runner, per-repo and per-task recipes, and legacy toolkit
+  layers. Trials use the shared Podman base and canonical store. Docker Desktop
+  contained no `fr-*` image tags when checked.
+
+### Verified
+
+- The November 20 warm acceptance run passed all 27 sequential oracle trials
+  across nine tasks and spikes. The Podman image inventory was identical and no
+  image build events were recorded. Allocated store bytes were
+  12,101,500,928 before and after (delta 0). Podman's graph root was
+  1,514,962,944 bytes before and after (delta 0).
+- Each private draft passed five oracle trials, scored zero in five no-op
+  trials, and passed its directory leak probe. See
+  [section 6 verification](docs/spikes.md#podman-section-6-acceptance-2026-11-20).
+
 ## 2026-11-20
 
 ### Changed

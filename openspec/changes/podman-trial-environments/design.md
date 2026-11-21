@@ -68,7 +68,7 @@ The snapshot then holds one commit, no remotes, no hooks and no reflog. The leak
 
 Repo configuration pins the source commit, interpreter and sync arguments for the canonical benchmark environment. `fr env ensure <repo>` creates that environment on demand. Change those inputs explicitly at the repo benchmark level and revalidate the affected tasks. Task snapshots, historical lockfiles and interpreter declarations never select or create a different environment.
 
-A repo may be a composite: `kind = "python+rust"` adds a pinned Rust toolchain and the crates of the listed `rust_manifests` to the Python environment, warmed at the canonical commit into a shared target cache (`CARGO_TARGET_DIR`), and offline in trials. sd-scripts is one (2026-11-20, user): its Pliron candidate crate is needed by N7. Every task of a composite repo gets the whole composite; there are no task-specific Rust environments. The store GC keeps both halves.
+A repo may be a composite: `kind = "python+rust"` adds a pinned Rust toolchain and the crates of the listed `rust_manifests` to the Python environment, warmed at the canonical commit into a shared target cache (`CARGO_TARGET_DIR`), and offline in trials. sd-scripts is one (2026-11-20, user): its Pliron candidate crate is needed by N7. Warmed targets keep dependencies only: each workspace member's own artifacts are removed after warming (they were built from the canonical commit, newer than most snapshots), so trials compile the repo's own crates from their snapshot. Every task of a composite repo gets the whole composite; there are no task-specific Rust environments. The store GC keeps both halves.
 
 `fr env check <task>` reports the task snapshot's lock differences for diagnosis. Validate each task on the canonical environment. A historical task that fails for dependency or interpreter reasons must be adapted without changing its substance, or excluded.
 
@@ -105,7 +105,7 @@ Unchanged policy: agents get web access; model endpoints go through Agent Vault 
 ### P8. Retiring the Docker artifacts
 After the pilot task passes under Podman:
 - **Images:** delete every `fr-*` image from Docker Desktop.
-- **Recipes:** remove `images/repo-python`, `images/repo-rust`, `images/repo-pytortch`, `images/toolkits` and `images/build.sh`. Keep `images/base-cpu` and `images/common/fr-snapshot-init`, which becomes the host-side materialize step's reference.
+- **Recipes:** remove `images/repo-python`, `images/repo-rust`, `images/repo-pytortch`, `images/toolkits` and `images/build.sh`. Keep `images/base-cpu`. The host materializer implements the former `images/common/fr-snapshot-init` steps.
 - **Code and docs:**
   - update the vendored skill's task template and `UPSTREAM.md`;
   - update `docs/running.md`, `docs/harnesses.md` and `images/README.md`;

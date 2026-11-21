@@ -1,4 +1,5 @@
 #!/bin/bash
+set -o pipefail
 # Pass iff the Pliron crate builds and its tests pass offline from the warmed seed, and the
 # Python venv imports torch and xdsl.
 mkdir -p /logs/verifier; reward=0; trap 'echo "$reward" > /logs/verifier/reward.txt' EXIT

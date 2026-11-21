@@ -1,7 +1,9 @@
 import json
 import subprocess
+from pathlib import Path
 
 import pytest
+import yaml
 
 from fitting_room.tasks.materialize import MaterializeError, materialize
 
@@ -18,6 +20,16 @@ def repo(tmp_path):
     git(r, "init", "-q")
     (r / "a.py").write_text("v1\n")
     (r / ".env").write_text("SECRET=1\n")
+    (r / ".beads").mkdir()
+    (r / ".beads/config.yaml").write_text(
+        "sync.remote: https://example.invalid/dotted\n"
+        "sync: {remote: https://example.invalid/nested, enabled: true}\n"
+        "dolt.shared-server: true\n"
+        "dolt: {server-port: 3308, auto-commit: batch}\n"
+        "issue-prefix: demo\n"
+    )
+    (r / ".beads/metadata.json").write_text('{"dolt_mode":"server"}\n')
+    (r / ".beads/issues.jsonl").write_text('{"id":"demo-1"}\n')
     git(r, "add", "-A")
     git(r, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "one")
     first = git(r, "rev-parse", "HEAD")
@@ -30,34 +42,47 @@ def repo(tmp_path):
 
 def make_task(tmp_path, commit):
     task = tmp_path / "task"
-    (task / "environment").mkdir(parents=True)
-    (task / "environment" / "Dockerfile").write_text("FROM scratch\n")
+    task.mkdir(parents=True)
     (task / "task.toml").write_text(
         f'[task]\nname = "fr/demo-x"\n[metadata]\nrepo = "demo"\nstart_commit = "{commit}"\n'
+        '[environment]\ndocker_image = "fr-base/cpu:1"\n'
     )
     return task
 
 
-@pytest.mark.parametrize("prebuilt", [False, True])
-def test_snapshot_is_start_commit_without_secrets_or_history(tmp_path, repo, monkeypatch, prebuilt):
+def test_snapshot_is_start_commit_without_secrets_or_history(tmp_path, repo, monkeypatch):
     r, first = repo
     monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
     task = make_task(tmp_path, first[:8])
-    if prebuilt:
-        (task / "environment" / "Dockerfile").unlink()
-        with (task / "task.toml").open("a") as cfg:
-            cfg.write('[environment]\ndocker_image = "fr-base/cpu:1"\n')
-    (task / "environment" / "repo").mkdir()
+    (task / "environment" / "repo").mkdir(parents=True)
     (task / "environment" / "repo" / "stale.txt").write_text("old")
     m = materialize(task)
     dest = task / "environment" / "repo"
     assert m.commit == first
     assert (dest / "a.py").read_text() == "v1\n"
     assert not (dest / "b.py").exists() and not (dest / "stale.txt").exists()
-    assert not (dest / ".env").exists() and m.stripped == [".env"]
-    assert not (dest / ".git").exists()
+    assert not (dest / ".env").exists()
+    assert set(m.stripped) == {".env", ".beads/metadata.json"}
+    assert not (dest / ".beads/metadata.json").exists()
+    assert (dest / ".beads/issues.jsonl").is_file()
+    assert git(dest, "rev-list", "--all", "--count") == "1"
+    assert git(dest, "branch", "--show-current") == "main"
+    assert git(dest, "log", "--format=%s") == "init"
+    assert git(dest, "log", "--format=%ae") == "benchmark@example.invalid"
+    assert git(dest, "reflog", "--all") == git(dest, "remote") == git(dest, "tag") == ""
+    assert git(dest, "status", "--porcelain") == ""
+    assert not (dest / ".git/hooks").exists()
+    assert yaml.safe_load((dest / ".beads/config.yaml").read_text()) == {
+        "sync": {"enabled": True},
+        "dolt": {"auto-commit": "batch"},
+        "issue-prefix": "demo",
+    }
+    commit = git(dest, "rev-parse", "HEAD")
+    materialize(task)
+    assert git(dest, "rev-parse", "HEAD") == commit
     rec = json.loads((task / "environment" / ".materialized.json").read_text())
     assert rec["commit"] == first
+    assert rec["snapshot_commit"] == commit
 
 
 def test_missing_metadata_refused(tmp_path, repo, monkeypatch):
@@ -105,8 +130,12 @@ def test_repo_excludes_and_task_includes(tmp_path, monkeypatch):
     monkeypatch.setattr(mz, "REPO_CONFIGS", cfg)
     monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
     task = make_task(tmp_path, git(r, "rev-parse", "HEAD"))
-    with (task / "task.toml").open("a") as fh:
-        fh.write('snapshot_include = ["stage5/artifacts/keep/**"]\n')
+    config = task / "task.toml"
+    config.write_text(
+        config.read_text().replace(
+            "[environment]", 'snapshot_include = ["stage5/artifacts/keep/**"]\n[environment]'
+        )
+    )
     m = materialize(task)
     dest = task / "environment" / "repo"
     assert (dest / "src" / "a.py").exists()
@@ -114,3 +143,36 @@ def test_repo_excludes_and_task_includes(tmp_path, monkeypatch):
     assert (dest / "stage5" / "artifacts" / "top.json").exists()  # files directly under stay
     assert (dest / "stage5" / "artifacts" / "keep" / "y.json").exists()
     assert m.excluded == 1
+
+
+def test_directory_probe_fails_when_solution_string_is_present(tmp_path, repo, monkeypatch):
+    r, first = repo
+    monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
+    task = make_task(tmp_path, first)
+    probe = (
+        Path(__file__).resolve().parents[1]
+        / ".agents/skills/evals-from-sessions/assets/leak-probe.sh"
+    )
+    strings = tmp_path / "solution-strings"
+    strings.write_text("unique private reference answer\n")
+    assert subprocess.run(["bash", probe, task, strings], check=False).returncode == 2
+    snapshot = materialize(task).dest
+    assert subprocess.run(["bash", probe, task, strings], check=False).returncode == 0
+    (snapshot / ".leaked").write_text(strings.read_text())
+    assert subprocess.run(["bash", probe, task, strings], check=False).returncode == 1
+
+
+def test_invalid_snapshot_keeps_previous_materialization(tmp_path, repo, monkeypatch):
+    r, first = repo
+    monkeypatch.setenv("FR_REPOS_DIR", str(r.parent))
+    task = make_task(tmp_path, first)
+    dest = materialize(task).dest
+    original = git(dest, "rev-parse", "HEAD")
+    (r / ".beads/config.yaml").write_text("dolt: [\n")
+    git(r, "add", ".beads/config.yaml")
+    git(r, "-c", "user.name=t", "-c", "user.email=t@x", "commit", "-qm", "bad config")
+    with pytest.raises(MaterializeError, match="Invalid Beads config"):
+        materialize(task, repo="demo", commit="HEAD")
+    assert git(dest, "rev-parse", "HEAD") == original
+    record = json.loads((dest.parent / ".materialized.json").read_text())
+    assert record["snapshot_commit"] == original

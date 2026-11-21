@@ -1,6 +1,6 @@
 # Running benchmarks
 
-A **campaign** runs a set of tasks under one or more **run configurations**, several times each, through [Harbor](https://docs.harborframework.com) on the local Docker backend. Results stay local under `results/` (gitignored).
+A **campaign** runs a set of tasks under one or more **run configurations**, several times each, through [Harbor](https://docs.harborframework.com) in rootless Podman on WSL. Results stay local under `results/` (gitignored).
 
 ```sh
 uv run fr run <campaign>
@@ -28,8 +28,8 @@ test-nop: 0 passed, 3 failed, 0 infrastructure errors (pass rate 0%) -> results/
 One harness × model × arm × toolkit (× serving profile) combination. The file name is the configuration's name.
 
 ```toml
-harness = "codex"              # codex | claude-code | opencode | hermes | omp
-harness_version = "0.162.0"    # required: the exact version installed in the sandbox
+harness = "claude-code"              # codex | claude-code | opencode | hermes | omp
+harness_version = "2.1.263"    # required: the exact version installed in the sandbox
 model = "zai/glm-5.3"          # required: '<provider>/<model id>' (zai or local)
 effort = "medium"              # required: reasoning effort, passed explicitly
 arm = "stock"                  # optional, default "stock": configs/arms/<arm>/
@@ -54,9 +54,9 @@ The provider is the part of `model` before the slash. Benchmarked models are GLM
 | Provider | Example `model` | How it connects |
 |---|---|---|
 | `zai` | `zai/glm-5.3`, `zai/glm-5.3-flash` | z.ai's Anthropic-compatible endpoint with the placeholder key `av-managed-key`. The host's Agent Vault substitutes the real key in-flight; `fr run` mounts Agent Vault's public CA into the sandbox through a generated Compose overlay. Agent Vault must be unlocked. |
-| `local` | `local/qwen3.5-9b` | The serving profile's endpoint at `host.docker.internal:18080` with a placeholder key. Start it first with `uv run fr serve up <profile>`; `fr run` refuses local runs when it is down. |
+| `local` | `local/qwen3.5-9b` | The serving profile's endpoint at `host.containers.internal:18080` with a placeholder key. Start it first with `uv run fr serve up <profile>`; `fr run` refuses local runs when it is down. |
 
-Only harness × provider pairs that have passed a smoke run are accepted (see `docs/harnesses.md`); others are refused before anything starts. Currently: `claude-code` × `zai`, `omp` × `zai`, `opencode` × `local`.
+Only harness × provider pairs that have passed a smoke run are accepted (see `docs/harnesses.md`); others are refused before anything starts. Currently, Claude Code and Oh My Pi use z.ai, Codex and OpenCode use the local endpoint, and Hermes supports both.
 
 ```sh
 uv run fr serve up qwen35-9b-3080   # only needed for local models
@@ -69,6 +69,7 @@ uv run fr serve down qwen35-9b-3080
 ```toml
 runs = ["codex-medium", "claude-code-medium"]   # run configuration names
 repeats = 3                                     # trials per task per configuration (default 3)
+n_concurrent_trials = 1                        # serialize trials (default 4; GLM runs are capped at 2)
 agent_timeout_multiplier = 2.0                  # optional: double the task's agent budget
 
 [tasks]
@@ -106,37 +107,71 @@ results/<campaign>/<YYYYmmdd-HHMMSS>/
 
 Each trial is **pass**, **fail** or **infrastructure error**:
 
-- An exception that leaves no valid reward (image build, sandbox start, endpoint unreachable, auth, rate limit and similar) is an infrastructure error. It is excluded from pass rate and counted separately.
+- An exception that leaves no valid reward (sandbox start, endpoint unreachable, auth, rate limit and similar) is an infrastructure error. It is excluded from pass rate and counted separately.
 - Agent timeouts, context-window overflows and non-zero agent exits are model failures: the verifier still grades the final state.
 - Exception types Harbor does not recognise are treated as infrastructure errors, so an adapter bug is never scored as a model failure.
 - A trial with no reward at all is an infrastructure error.
 
 ## Podman setup (one time)
 
-Tasks whose `task.toml` sets `[environment] docker_image = "localhost/fr-base/cpu:1"` run under rootless Podman (change `podman-trial-environments`). Store and images live on the WSL disk; nothing touches Docker Desktop.
+Enable rootless Podman in the WSL distro. On NixOS, enable
+`virtualisation.podman.enable` with `dockerCompat = false`. Configure pasta
+for loopback access in `~/.config/containers/containers.conf` if the trials
+need to reach a model or probe on the host:
 
-```sh
-podman build -t localhost/fr-base/cpu:1 images/base-cpu            # shared base image
-nix build nixpkgs#docker-compose -o "${FR_STORE:-$HOME/.local/share/fitting-room/store}/tools/docker-compose"
-uv run fr env ensure <repo>                                         # canonical env from configs/repos/<repo>.toml
+```toml
+[network]
+pasta_options = ["--map-host-loopback", "169.254.1.2"]
 ```
 
-`fr run` creates missing canonical environments itself and runs Harbor with a PATH without `/mnt/*` entries and with `PODMAN_COMPOSE_PROVIDER` set to that docker-compose (your global podman-compose setting is untouched). `FR_STORE` and `FR_PODMAN_COMPOSE_PROVIDER` override the defaults. `uv run fr env check <task>` reports how a task's historical lock differs from the canonical one; `uv run fr store gc` previews unused environments and harness installs (`--apply` removes them).
+```sh
+podman build -t localhost/fr-base/cpu:1 images/base-cpu
+fr_store=${FR_STORE:-$HOME/.local/share/fitting-room/store}
+mkdir -p "$fr_store/tools"
+nix build nixpkgs#docker-compose -o "$fr_store/tools/docker-compose"
+uv run fr doctor
+```
+
+`fr run` uses Compose V2 over the Podman socket with Windows executables removed from its
+PATH. Set `FR_PODMAN_COMPOSE_PROVIDER` to select another Linux Compose V2 binary.
+Set `FR_STORE` to override `~/.local/share/fitting-room/store`. Keep the store, uv cache,
+Podman graph root, tasks and results on the WSL filesystem. The uv cache and store must
+share a filesystem for hardlinks.
+
+Each repo uses the canonical environment in `configs/repos/<repo>.toml`. `fr run`
+provisions missing environments and pinned harnesses before starting Harbor. To
+prepare or inspect these inputs separately:
+
+```sh
+uv run fr env ensure <repo>
+uv run fr env check tasks/<repo>/<slug>
+uv run fr harness ensure <name> <version>
+uv run fr store gc
+```
+
+`fr env check` reports historical lock differences. `fr store gc` previews unused
+environments, harnesses and toolkits. Add `--apply` to remove the listed entries.
 
 ## Materializing a task's repo snapshot
 
-`environment/repo/` is never committed. Recreate it with:
+Declare the shared image in `task.toml`:
 
-```bash
+```toml
+[environment]
+docker_image = "fr-base/cpu:1"
+```
+
+```sh
 uv run fr task materialize tasks/<repo>/<slug>
 ```
 
-It reads `[metadata] repo` and `start_commit` from `task.toml`, runs `git archive` of
-`~/Projects/<repo>` (override the parent directory with `FR_REPOS_DIR`) at that commit,
-drops `.env`-style files and symlinks that point outside the repo, and records what it
-wrote in `environment/.materialized.json` (outside the image's `COPY repo/`). The task
-Dockerfile re-inits the snapshot as a single commit. Submodule contents are not included;
-the command warns when a repo has them.
+The command uses `[metadata] repo` and `start_commit` to archive the local source
+commit from `~/Projects/<repo>` (override the parent with `FR_REPOS_DIR`). It strips
+credential files, outward symlinks and Beads connection state, then creates one fresh
+Git commit without remotes, hooks or reflogs. The snapshot is gitignored and the
+materialization record stays in `environment/.materialized.json`. Submodules are
+reported and their contents are omitted. Each trial copies the snapshot into
+`/work/<repo>` and mounts the canonical dependencies read-only.
 
 Per-repo excludes live in `configs/repos/<repo>.toml` (`exclude` = glob patterns on
 repo-relative paths). pytortch-backend-experiments drops its generated stage artifacts
@@ -144,6 +179,17 @@ repo-relative paths). pytortch-backend-experiments drops its generated stage art
 task that needs some of them lists them under `[metadata] snapshot_include`; both are
 recorded in `environment/.materialized.json`.
 
-Checked 2026-11-19 on data-processing at `43ea94ad` (693 files): the upstream leak probe
-reported one commit, one ref, no remotes, tags, hooks or stashes, and no hits for strings
-from later commits.
+## Sequential acceptance campaign
+
+`podman-acceptance` runs three oracle repeats per available task and spike. It
+uses the dev-stack toolkit for the toolkit smoke, and pins the task GPU to the
+local RTX 3080. Update its UUID for a different host. Materialize each repo-backed
+task first, including `spikes/toolkit-check` and `spikes/sd-rust-check`. For a
+zero-build measurement, start with the shared base and the Harbor egress sidecar
+already present. Harbor prepares the sidecar when it first runs an allowlisted trial.
+
+The two host-service spikes need a fixture on the same loopback port used by the
+benchmark model endpoint. With that port free, serve a file named `ping` containing
+`fitting-room-pong` from a temporary directory using
+`python3 -m http.server 18080 --bind 127.0.0.1 --directory <fixture-dir>`. Then run
+`uv run fr run podman-acceptance` and stop the fixture server after the campaign.

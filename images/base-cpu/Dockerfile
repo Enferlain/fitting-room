@@ -1,7 +1,4 @@
-# fitting-room shared base (CPU): OS tools, uv and Node only. Repo tools (bd, openspec,
-# codebase-memory) are NOT here: nothing is enabled by default; the dev-stack toolkit
-# layer (images/toolkits/dev-stack) adds them when a run asks for it.
-# Repo images build FROM this; task images build FROM the repo image.
+# Shared Podman trial base. Repo dependencies, harnesses and toolkits live in the store.
 FROM debian:trixie-slim
 
 ARG UV_VERSION=0.13.4
@@ -30,6 +27,3 @@ RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-l
 # Sandbox git identity, so agents can commit.
 RUN git config --system user.name agent && git config --system user.email agent@example.invalid \
     && git config --system init.defaultBranch main && git config --system safe.directory '*'
-
-# fr-snapshot-init is installed by the repo images' last layer (images/common/), so
-# changing it does not invalidate the heavy layers above the base.

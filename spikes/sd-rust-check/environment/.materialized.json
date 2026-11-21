@@ -1,8 +1,11 @@
 {
  "repo": "sd-scripts",
  "commit": "5a737c27749bac7eb364d9cf21ea343dc5420234",
- "files": 1162,
- "stripped": [],
+ "snapshot_commit": "bb3b3df09d174815b2215a4cf3f03e70f397a247",
+ "files": 1161,
+ "stripped": [
+  ".beads/metadata.json"
+ ],
  "excluded_patterns": [
   "docs_design/models-strategy-trainer/_deprecated/**"
  ],

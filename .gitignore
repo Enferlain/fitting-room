@@ -236,3 +236,4 @@ __marimo__/
 .venv-wsl/
 tasks/**/environment/repo/
 spikes/**/environment/repo/
+**/environment/.materialize-*/

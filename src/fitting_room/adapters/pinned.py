@@ -16,9 +16,7 @@ from fitting_room.harness_store import BINARIES, version_command, version_matche
 class PinnedInstall:
     async def install(self, environment: BaseEnvironment) -> None:
         if not isinstance(environment, FrPodmanEnvironment):
-            # Legacy smoke tasks still use Harbor's Docker path until section 6.
-            await super().install(environment)
-            return
+            raise RuntimeError("Pinned fitting-room harnesses require its Podman environment")
         name = self.store_harness_name
         path = environment.harness_path
         if path is None or not self._version:

@@ -10,12 +10,11 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import os
 import subprocess
 import tomllib
 from collections.abc import Callable
 from contextlib import ExitStack
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from fitting_room.bench_native import ensure_environment
@@ -32,8 +31,8 @@ from fitting_room.podman_host import (
 from fitting_room.provenance import write_sidecars
 from fitting_room.providers import PROVIDERS, stage_certs, write_ca_overlay
 from fitting_room.store import StoreError, store_lock, wsl_path
-from fitting_room.tasks.materialize import MaterializeError
-from fitting_room.toolkits import Toolkit, ensure_toolkit, load_toolkit, stage_tasks, unsupported
+from fitting_room.tasks.materialize import MaterializeError, snapshot_lock
+from fitting_room.toolkits import Toolkit, ensure_toolkit, load_toolkit, unsupported
 
 JOB_CONFIG_NAME = "job-config.json"
 # Variables that make Harbor upload a host login (e.g. ~/.codex/auth.json) into the
@@ -85,7 +84,7 @@ def _model_id(run: RunConfig) -> str:
 def _claude_code_zai(run: RunConfig) -> AgentSpec:
     p = PROVIDERS["zai"]
     return AgentSpec(
-        name="claude-code",
+        import_path="fitting_room.adapters.pinned:FrClaudeCode",
         model_name=f"anthropic/{_model_id(run)}",
         kwargs={"version": run.harness_version, "reasoning_effort": run.effort},
         base_url=p.anthropic_base_url,
@@ -101,7 +100,7 @@ def _opencode_local(run: RunConfig) -> AgentSpec:
     # configured effort is recorded in the sidecar but not passed.
     p = PROVIDERS["local"]
     return AgentSpec(
-        name="opencode-v2",
+        import_path="fitting_room.adapters.pinned:FrOpenCode",
         model_name=f"openai/{_model_id(run)}",
         kwargs={"version": run.harness_version},
         base_url=p.openai_base_url,
@@ -130,7 +129,7 @@ def _codex_local(run: RunConfig) -> AgentSpec:
     # Codex only speaks the Responses API; llama-server serves /v1/responses.
     p = PROVIDERS["local"]
     return AgentSpec(
-        name="codex",
+        import_path="fitting_room.adapters.pinned:FrCodex",
         model_name=f"openai/{_model_id(run)}",
         kwargs={
             "version": run.harness_version,
@@ -210,7 +209,8 @@ def build_job_config(
     toolkit: Toolkit | None = None,
     *,
     agent_timeout_multiplier: float | None = None,
-    podman_options: dict | None = None,
+    podman_options: dict,
+    n_concurrent_trials: int,
 ) -> dict:
     job_agent = agent.to_job_agent()
     if toolkit is not None and agent.name not in ("oracle", "nop"):
@@ -222,14 +222,14 @@ def build_job_config(
         "job_name": run.name,
         "jobs_dir": str(jobs_dir),
         "n_attempts": repeats,
+        "n_concurrent_trials": n_concurrent_trials,
         "quiet": True,
         "agents": [job_agent],
         "tasks": [{"path": str(p)} for p in task_dirs],
+        "environment": {"import_path": IMPORT_PATH, "delete": False, "kwargs": podman_options},
     }
-    if podman_options is not None:
-        cfg["environment"] = {"import_path": IMPORT_PATH, "delete": False, "kwargs": podman_options}
     if extra_compose:
-        cfg.setdefault("environment", {})["extra_docker_compose"] = [str(p) for p in extra_compose]
+        cfg["environment"]["extra_docker_compose"] = [str(p) for p in extra_compose]
     if agent_timeout_multiplier is not None:
         cfg["agent_timeout_multiplier"] = agent_timeout_multiplier
     return cfg
@@ -247,8 +247,7 @@ HarborInvoker = Callable[[Path, dict], int]
 
 def invoke_harbor(job_config_path: Path, host_env: dict) -> int:
     """Run `harbor run -c <file>` with placeholder credentials in its environment."""
-    parent = local_podman_env() if "PODMAN_COMPOSE_PROVIDER" in host_env else os.environ
-    env = {k: v for k, v in parent.items() if k not in HOST_LOGIN_VARS}
+    env = {k: v for k, v in local_podman_env().items() if k not in HOST_LOGIN_VARS}
     env.update(host_env)
     return subprocess.call(["harbor", "run", "-c", str(job_config_path), "-y", "-q"], env=env)
 
@@ -266,18 +265,19 @@ def _podman_tasks(tasks: list[Path], task_gpu: str | None) -> tuple[dict[Path, s
         env = cfg.get("environment", {})
         repo = task_repo(task)
         img = env.get("docker_image")
-        if img not in BASE_IMAGE_NAMES:
-            if repo is not None:
-                raise StoreError(f"{task} must be migrated to the canonical Podman environment")
-            continue
+        if not isinstance(img, str) or img not in BASE_IMAGE_NAMES:
+            raise StoreError(f"{task} must use the prebuilt Podman base image")
         task = wsl_path(task, "task")
         definition = task / "environment"
         if any((definition / name).exists() for name in ("Dockerfile", "docker-compose.yaml")):
             raise StoreError(f"{task}: remove the old environment definition for Podman")
         if repo is not None:
-            snapshot = wsl_path(definition / "repo", "snapshot")
-            if not (snapshot / ".git").is_dir():
-                raise StoreError(f"{task}: prepare the single-commit snapshot first")
+            if not definition.is_dir():
+                raise StoreError(f"{task}: run fr task materialize first")
+            with snapshot_lock(definition, exclusive=False):
+                snapshot = wsl_path(definition / "repo", "snapshot")
+                if not (snapshot / ".git").is_dir():
+                    raise StoreError(f"{task}: run fr task materialize first")
         verifier = cfg.get("verifier", {})
         if verifier.get("environment_mode") == "separate" or verifier.get("environment"):
             raise StoreError(f"{task}: fitting-room Podman currently requires a shared verifier")
@@ -287,41 +287,28 @@ def _podman_tasks(tasks: list[Path], task_gpu: str | None) -> tuple[dict[Path, s
         if task in selected:
             raise StoreError(f"Duplicate Podman task path: {task}")
         selected[task] = repo
-    if selected and len(selected) != len(tasks):
-        raise StoreError("Use a separate campaign for legacy Docker smoke tasks")
     return selected, needs_gpu
 
 
-def _podman_run(
-    run: RunConfig, spec: AgentSpec, toolkit: Toolkit, store: Path, base: dict
-) -> tuple[AgentSpec, dict]:
-    options = dict(base)
-    if run.is_local:
-        spec = replace(
-            spec,
-            base_url=(spec.base_url or "").replace(
-                "host.docker.internal", "host.containers.internal"
-            ),
-            extra_allowed_hosts=tuple(
-                host.replace("host.docker.internal", "host.containers.internal")
-                for host in spec.extra_allowed_hosts
-            ),
-        )
+#: z.ai plan limit (user, standing rule): never more than 2 concurrent GLM sessions.
+GLM_MAX_CONCURRENT = 2
+
+
+def concurrent_trials(run: RunConfig, requested: int) -> int:
+    """Trials Harbor may run at once for this run config (GLM runs are capped)."""
+    return min(requested, GLM_MAX_CONCURRENT) if run.provider == "zai" else requested
+
+
+def _run_mounts(run: RunConfig, toolkit: Toolkit, store: Path) -> dict:
+    mounts = {}
     if run.harness in BINARIES:
         if not run.harness_version:
             raise StoreError(f"Run '{run.name}' must pin {run.harness}")
-        options["harness_path"] = str(ensure_harness(run.harness, run.harness_version, store))
-        adapters = {"codex": "FrCodex", "claude-code": "FrClaudeCode", "opencode": "FrOpenCode"}
-        if adapter := adapters.get(run.harness):
-            spec = replace(spec, import_path=f"fitting_room.adapters.pinned:{adapter}")
-    if toolkit.dockerfile_append.strip():
-        raise StoreError(
-            f"Toolkit '{run.toolkit}' requires a Dockerfile layer unavailable in Podman"
-        )
+        mounts["harness_path"] = str(ensure_harness(run.harness, run.harness_version, store))
     if toolkit.store:
-        options["toolkit_path"] = str(ensure_toolkit(toolkit, store))
-        options["toolkit_beads"] = "bd" in toolkit.store
-    return spec, options
+        mounts["toolkit_path"] = str(ensure_toolkit(toolkit, store))
+        mounts["toolkit_beads"] = "bd" in toolkit.store
+    return mounts
 
 
 def run_campaign(
@@ -366,35 +353,28 @@ def run_campaign(
         raise ConfigError(problems)
 
     with ExitStack() as leases:
-        podman_jobs = {}
-        host_env = {}
         work = work_dir or results_root.parent / "work"
         try:
             task_gpu = campaign.config.gpu.task_gpu
             podman_tasks, needs_gpu = _podman_tasks(campaign.task_dirs, task_gpu)
-            if not podman_tasks and any(toolkit.store for toolkit in toolkits.values()):
-                raise StoreError("Store-backed toolkits require Podman tasks")
-            if podman_tasks:
-                host_env = podman_host_env()
-                store = check_storage(root.path.parent / "tasks", results_root, host_env)[
-                    "FR_STORE"
-                ]
-                wsl_path(work, "work")
-                if needs_gpu and task_gpu is not None:
-                    check_task_gpu(task_gpu, host_env)
-                leases.enter_context(store_lock(store, exclusive=False))
-                benchmark = {
-                    repo: ensure_environment(repo, store, root.path / "repos")
-                    for repo in sorted(set(podman_tasks.values()) - {None})
+            host_env = podman_host_env()
+            store = check_storage(root.path.parent / "tasks", results_root, host_env)["FR_STORE"]
+            wsl_path(work, "work")
+            if needs_gpu and task_gpu is not None:
+                check_task_gpu(task_gpu, host_env)
+            leases.enter_context(store_lock(store, exclusive=False))
+            benchmark = {
+                repo: ensure_environment(repo, store, root.path / "repos")
+                for repo in sorted(set(podman_tasks.values()) - {None})
+            }
+            podman_jobs = {
+                run.name: {
+                    "repo_environments": benchmark,
+                    "task_gpu": task_gpu,
+                    **_run_mounts(run, toolkits[run.name], store),
                 }
-                for run in campaign.runs:
-                    specs[run.name], podman_jobs[run.name] = _podman_run(
-                        run,
-                        specs[run.name],
-                        toolkits[run.name],
-                        store,
-                        {"repo_environments": benchmark, "task_gpu": campaign.config.gpu.task_gpu},
-                    )
+                for run in campaign.runs
+            }
         except (ValueError, MaterializeError, OSError) as exc:
             raise ConfigError([str(exc)]) from exc
 
@@ -403,14 +383,7 @@ def run_campaign(
         results = []
         for run in campaign.runs:
             toolkit = toolkits[run.name]
-            options = podman_jobs.get(run.name)
-            tasks = (
-                list(podman_tasks)
-                if options is not None
-                else stage_tasks(
-                    [p.resolve() for p in campaign.task_dirs], toolkit, (work / "staged").resolve()
-                )
-            )
+            options = podman_jobs[run.name]
             job_dir = out_dir / run.name
             job_dir.mkdir()
             spec = specs[run.name]
@@ -422,7 +395,7 @@ def run_campaign(
                 )
             job_cfg = build_job_config(
                 run,
-                tasks,
+                list(podman_tasks),
                 campaign.config.repeats,
                 out_dir.resolve(),
                 spec,
@@ -430,6 +403,7 @@ def run_campaign(
                 toolkit=toolkit,
                 agent_timeout_multiplier=campaign.config.agent_timeout_multiplier,
                 podman_options=options,
+                n_concurrent_trials=concurrent_trials(run, campaign.config.n_concurrent_trials),
             )
             cfg_path = job_dir / JOB_CONFIG_NAME
             cfg_path.write_text(json.dumps(job_cfg, indent=2) + "\n")

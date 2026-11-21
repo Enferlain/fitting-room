@@ -157,18 +157,41 @@ instead of specs. The oracle and all three GLM toolkit runs passed both checks.
 With `toolkit = "none"`, Claude Code could see neither tool and scored 0.
 Local logs are under `work/podman-section-5/results/`.
 
-To recreate the toolkit snapshot on a fresh checkout, materialize it from the
-local hermes-agora checkout, then initialize its single commit. Section 6 will
-move the initialization into the materializer.
+To recreate the toolkit snapshot on a fresh checkout:
 
-```bash
-fr task materialize spikes/toolkit-check
-(
-    cd spikes/toolkit-check/environment/repo
-    GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 \
-    GIT_AUTHOR_NAME=benchmark GIT_AUTHOR_EMAIL=benchmark@example.invalid \
-    GIT_COMMITTER_NAME=benchmark GIT_COMMITTER_EMAIL=benchmark@example.invalid \
-        ../../../../images/common/fr-snapshot-init
-)
-fr run smoke-toolkit-glm
+```sh
+uv run fr task materialize spikes/toolkit-check
+uv run fr run smoke-toolkit-glm
 ```
+
+### Podman section 6 acceptance (2026-11-20)
+
+`podman-acceptance` ran nine tasks and spikes three times each with the oracle
+and dev-stack on the warm store. All 27 trials scored 1 with zero infrastructure
+errors in 5m 17s. Harbor trial timestamps confirmed the runs did not overlap.
+The GPU spike saw only the RTX 3080. The allowlist denied GitHub and reached PyPI
+on all three attempts. Both host-service variants reached the loopback fixture.
+
+| Allocated bytes | Before | After | Delta |
+|---|---:|---:|---:|
+| Benchmark store | 12,101,500,928 | 12,101,500,928 | 0 |
+| Podman graph root | 1,514,962,944 | 1,514,962,944 | 0 |
+
+The image inventory was identical. Podman logged one Alpine pull and no image
+builds. Docker Desktop reported no `fr-*` image tags. The run and its
+before/after inventories are under `work/podman-section-6/` with job stamp
+`20261120-203109`.
+
+Earlier passes caught inherited sd-scripts Dolt server metadata and an intermittent
+PyPI timeout. The materializer now retains the JSONL issue seed and strips
+connection state. The network probe now checks HTTPS response headers and retries
+the allowed endpoint within a fixed limit. The failed attempts remain in the logs.
+
+Separately, the two private drafts each passed 5/5 oracle trials and scored zero
+in all five no-op trials without infrastructure errors. Their directory probes
+found exactly one Git commit and no hooks, remotes, reflogs, unreachable objects,
+or reference-string hits.
+
+### Seeds without the repos' own crates (review, 2026-11-21)
+
+The warmed Rust targets held each repo's own crates compiled at the canonical commit (newer than most snapshots), which the directory leak probe never sees. Native recipe 2 removes every workspace member's artifacts after warming (`cargo metadata --no-deps` → `cargo clean -p`, dev and release). Remaining own-crate artifacts: sd-scripts 0 (198 dependency artifacts kept), hcom 0, pytortch 0 (`target` and `bridge-target`). Offline trial checks at the canonical commits: `spikes/sd-rust-check` passes (verifier 7 s); hcom `cargo test --workspace --locked --offline --no-run` passes in 36 s; pytortch trial setup (`build.sh`) completes in 92 s and produces the native `.so`. Re-provisioning took 37 s (sd-scripts), 77 s (hcom) and 451 s (pytortch).

@@ -1,7 +1,7 @@
 ---
 name: evals-from-sessions
 description: Turn your own coding-agent sessions (Claude Code, Codex, Pi, Gemini CLI, or other JSONL session exports) into verified Harbor eval tasks. Covers securing and selecting task episodes, building private tasks from a snapshot of your own repository or shareable re-authored tasks, writing a semantic verifier and reference solution, validating with oracle, nop, broken and alternative solutions, a leak probe, harbor check and one smoke run, with two human review checkpoints. Use when the user wants to build or extend a personal coding-agent benchmark or eval from their own agent sessions.
-compatibility: Requires Docker, git, Python 3.11+, a recent Harbor (`uv tool install harbor`; examples use 0.24 syntax) and gitleaks 8. Smoke runs and `harbor check` need credentials for one agent/model.
+compatibility: Requires rootless Podman, Git, the fitting-room uv environment with Harbor 0.26, and gitleaks 8. Real-agent smoke runs need a configured GLM or local endpoint.
 metadata:
   version: "1.0.4"
 ---
@@ -47,21 +47,19 @@ this section disagree, this section wins.
   needs it; say so in the instruction. The verifier stays offline and deterministic.
   For repos with a public upstream (hcom), fetching the repo's own remote must be
   blocked or flagged (beads issue on web access).
-- **Repo tools are present.** The per-repo base images provide the tools the repo's
-  instructions expect (git, uv, bd, openspec, toolchains). Do not strip `AGENTS.md`,
-  `.beads/` or `openspec/` from the snapshot unless they leak the answer; if they do,
-  remove only the leaking files and note it in `provenance.md`.
+- **Repo tools:** the shared base has Git and uv. Each repo's canonical environment
+  provides its toolchain. Enable `dev-stack` when the task needs bd or OpenSpec.
+  Keep `AGENTS.md`, the Beads issue export and `openspec/` for repo context. Record
+  any files excluded to prevent answer leakage in `provenance.md`.
 - **GPU tasks are allowed.** Set `[metadata] gpu_vram_gb` and `[environment] gpus = 1`;
   `fr run` pins the GPU. Keep VRAM within one card that is not serving a model.
 - **Models and commands.** Smoke runs use `fr run` with a GLM or local-model run
-  config (never GPT or Claude models). `harbor check` runs with omp + GLM, not its
-  default agent. Pass the reasoning effort explicitly (the run config does).
+  config. Set the reasoning effort in that config. Record Harbor's built-in task
+  quality checker as unavailable for fitting-room snapshots until it supports the
+  fitting-room environment and store mounts.
 - **Verifier mode:** set `[verifier] environment_mode = "shared"` explicitly; Harbor
   0.26's `harbor task init` defaults new tasks to `separate`.
-- **Repo path:** the snapshot lives at `/work/<repo>` (not `/app`): codebase-memory
-  refuses to index a top-level directory, and the real name matches the user's sessions.
-  Tools are off by default; the `dev-stack` toolkit layer adds bd, openspec and
-  codebase-memory when a run enables it.
+- **Repo path:** the trial starts at `/work/<repo>`, matching the source repo's name.
 - Task names: `fr/<repo>-<short-slug>`; tasks live in `tasks/<repo>/<slug>/`, validation
   evidence in `validation/<repo>/<slug>/`.
 
@@ -132,11 +130,8 @@ Run `gitleaks dir <copy> --redact --no-banner --report-path <workdir>/gitleaks.j
 and record the number of hits in `candidates.md`. Never write a secret anywhere.
 Skip subagent files (`<session>/subagents/`, reviewer or guardian runs): they have no
 user request or correction.
-Check `harbor --version` and record it in `report.md`. The contract shows Harbor 0.24
-syntax. Before the first use of each command, confirm its flags with `--help` on the
-installed version, and take `schema_version` from the skeleton that `harbor task init`
-creates. If a command does not exist in your version (for example `harbor check`),
-record "not available" in `report.md` and continue.
+Record `harbor --version` in `report.md`. The contract uses fitting-room's
+Harbor 0.26 pin. Keep the task schema version in the template.
 
 ### 1. Inventory, select and choose the mode
 
@@ -219,8 +214,8 @@ overwrite the approved provenance (`rsync -a --exclude provenance.md`, or `cp -n
   free prose with keywords. Field names must not presuppose the answer. Give the data
   enough records and distractors that the answer cannot be read off a few files in one
   pass.
-- **private environment/**: `git archive <parent-commit>` of the repository into
-  `environment/repo/`; the Dockerfile re-inits it as one commit (template). Move tests
+- **private environment/**: run `fr task materialize <task>` with the repo and
+  parent commit in `task.toml`. It produces a single-commit `environment/repo/`. Move tests
   added by the episode commit to `tests/` and delete them from `environment/`. Strip
   `.env`, credentials and private data the task does not need. `gitleaks dir
   environment/` must report zero hits.
@@ -284,10 +279,10 @@ task. Commands are in the contract. Required evidence:
    usernames, emails, repo names, keys); shareable expects no hits, private expects
    only the snapshot itself. `gitleaks dir <task>/environment` gives zero hits.
 6. **Leak probe**: run `assets/leak-probe.sh <task> <solution-strings.txt>` (strings
-   only the reference diff contains, several per answer value). Expect one commit, one
-   reflog entry, no remotes, tags or hooks, and zero string hits inside the built image.
-7. **harbor check**: run it, copy every finding into `report.md`, and fix or justify
-   each `fail`.
+   only the reference diff contains, several per answer value). Expect one commit,
+   no reflogs, remotes, tags or hooks, and zero string hits in the snapshot directory.
+7. **Task quality checker:** record its availability in `report.md` according to
+   the fitting-room override above. For a supported check, fix or justify each failure.
 
 8. **Contract audit before the first smoke**: re-read the instruction sentence by
    sentence against the checks; remove or check every normative sentence now.
@@ -338,7 +333,7 @@ model, effort, reward, steps, cost, job path, classification); calibration flags
 - [ ] nop `0.0`; oracle `1.0` ×5; `alt-correct` `1.0`; every mutant `0.0`;
 - [ ] every normative sentence has a separating check; baselines are evaluator-owned;
 - [ ] no leaked strings, zero gitleaks hits, leak probe clean; evaluator files absent
-      from the image; `harbor check` findings recorded;
+      from the snapshot; task quality checker status recorded;
 - [ ] the last smoke run finished without infrastructure errors and is classified.
 
 Done means *ready for human review*, not accepted. Reviewer agents and then the user

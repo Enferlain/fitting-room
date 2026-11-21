@@ -6,6 +6,7 @@ import json
 import re
 import shlex
 import tomllib
+from contextlib import nullcontext
 from pathlib import Path
 
 from harbor.environments.podman import PodmanEnvironment, PodmanOptions
@@ -23,6 +24,7 @@ from fitting_room.podman_host import (
     SYSTEM_PATH,
 )
 from fitting_room.store import StoreError, component
+from fitting_room.tasks.materialize import snapshot_lock
 
 IMPORT_PATH = "fitting_room.environments.podman:FrPodmanEnvironment"
 SNAPSHOT = "/opt/fr-snapshot"
@@ -191,11 +193,12 @@ class FrPodmanEnvironment(PodmanEnvironment):
         if (environment_dir / "Dockerfile").exists():
             raise StoreError("Remove environment/Dockerfile for a prebuilt Podman task")
         repo = task_repo(environment_dir.parent)
+        self._snapshot_dir = environment_dir if repo is not None else None
         snapshot = None
         if repo is not None:
-            snapshot = (environment_dir / "repo").resolve()
-            if not snapshot.is_dir() or repo not in options.repo_environments:
-                raise StoreError(f"Missing snapshot or canonical environment for {repo}")
+            snapshot = environment_dir.resolve() / "repo"
+            if repo not in options.repo_environments:
+                raise StoreError(f"Missing canonical environment for {repo}")
             task_env_config = task_env_config.model_copy(update={"workdir": f"/work/{repo}"})
         super().__init__(
             environment_dir,
@@ -241,10 +244,21 @@ class FrPodmanEnvironment(PodmanEnvironment):
     async def start(self, force_build: bool) -> None:
         if force_build:
             raise StoreError("Fitting-room Podman tasks use a prebuilt base image")
-        await super().start(force_build=False)
-        if self._setup:
-            result = await self.exec("set -eu; " + "; ".join(self._setup))
-            self.logger.debug("Trial setup output:\n%s%s", result.stdout or "", result.stderr or "")
-            if result.return_code:
-                command = shlex.join(self._setup)
-                raise RuntimeError(f"Trial setup failed ({command}): {result.stderr}")
+        lease = (
+            snapshot_lock(self._snapshot_dir, exclusive=False)
+            if self._snapshot_dir is not None
+            else nullcontext()
+        )
+        with lease:
+            if self._snapshot_dir is not None and not (self._snapshot_dir / "repo/.git").is_dir():
+                raise StoreError(f"Run fr task materialize for {self._snapshot_dir.parent}")
+            await super().start(force_build=False)
+            if self._setup:
+                result = await self.exec("set -eu; " + "; ".join(self._setup))
+                self.logger.debug(
+                    "Trial setup output:\n%s%s", result.stdout or "", result.stderr or ""
+                )
+                if result.return_code:
+                    command = shlex.join(self._setup)
+                    details = result.stderr or result.stdout or f"exit {result.return_code}"
+                    raise RuntimeError(f"Trial setup failed ({command}): {details}")

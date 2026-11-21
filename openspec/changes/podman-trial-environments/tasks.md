@@ -40,8 +40,8 @@ Read `design.md` first: its "Verified on this host" table records what is alread
 
 ## 6. Tasks, template, docs, cleanup
 
-- [ ] 6.1 `fr task materialize` runs the snapshot-init steps on the host (one commit, no remotes or hooks or reflog, beads sync remotes stripped). The leak probe runs on the directory. Update `tests/test_materialize.py`
-- [ ] 6.2 Task template in the vendored skill: no `environment/Dockerfile`; `[environment] docker_image = "fr-base/cpu:1"` (or the rust base). Update `UPSTREAM.md`. Migrate compatible drafts, adapting them to the canonical environment where needed, and verify they validate (oracle 5/5, nop 0) under Podman
-- [ ] 6.3 Docs: `docs/running.md` (Podman setup, store, `fr env` and `fr harness`), `docs/harnesses.md` (installs from the store), `images/README.md` (only base images remain), `docs/spikes.md`. Mark `benchmark-foundation` design D2 and D8 superseded, with a pointer here
-- [ ] 6.4 Retire Docker: remove `images/repo-*`, `images/toolkits`, `images/build.sh` and the Docker-specific runner code; delete the `fr-*` images from Docker Desktop. Verify `uv run pytest` and ruff pass, and that `docker images | grep fr-` is empty
-- [ ] 6.5 Acceptance: a campaign of the available tasks run in sequence with oracle (3 repeats) builds no images. Record the disk delta (store and Podman graph root before and after) in `CHANGELOG.md`
+- [x] 6.1 `fr task materialize` runs the snapshot-init steps on the host (one commit, no remotes or hooks or reflog, beads sync remotes stripped). The leak probe runs on the directory. Update `tests/test_materialize.py`
+- [x] 6.2 Task template in the vendored skill: no `environment/Dockerfile`; `[environment] docker_image = "fr-base/cpu:1"` (or the rust base). Update `UPSTREAM.md`. Migrate compatible drafts, adapting them to the canonical environment where needed, and verify they validate (oracle 5/5, nop 0) under Podman
+- [x] 6.3 Docs: `docs/running.md` (Podman setup, store, `fr env` and `fr harness`), `docs/harnesses.md` (installs from the store), `images/README.md` (only base images remain), `docs/spikes.md`. Mark `benchmark-foundation` design D2 and D8 superseded, with a pointer here
+- [x] 6.4 Retire Docker: remove `images/repo-*`, `images/toolkits`, `images/build.sh` and the Docker-specific runner code; delete the `fr-*` images from Docker Desktop. Verify `uv run pytest` and ruff pass, and that `docker images | grep fr-` is empty
+- [x] 6.5 Acceptance: a campaign of the available tasks run in sequence with oracle (3 repeats) builds no images. Record the disk delta (store and Podman graph root before and after) in `CHANGELOG.md`

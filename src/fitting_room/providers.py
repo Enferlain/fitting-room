@@ -4,10 +4,10 @@ Benchmarked models are GLM (z.ai) and local models. No real key ever enters a sa
 
 - ``zai``: the agent gets a placeholder key. The host's Agent Vault (a Windows MITM
   proxy) intercepts ``api.z.ai`` and substitutes the real key in-flight. Containers
-  reach it through Docker Desktop's DNS forwarding; they only need to trust Agent
+  reach it through Podman; they only need to trust Agent
   Vault's *public* root CA, which a generated Compose overlay mounts.
 - ``local``: a serving profile on the host (``fr serve up``) reached through
-  ``host.docker.internal``; llama.cpp ignores the key, so a placeholder works.
+  ``host.containers.internal``; llama.cpp ignores the key, so a placeholder works.
 """
 
 from __future__ import annotations
@@ -44,10 +44,10 @@ PROVIDERS: dict[str, Provider] = {
     ),
     "local": Provider(
         name="local",
-        openai_base_url="http://host.docker.internal:18080/v1",
+        openai_base_url="http://host.containers.internal:18080/v1",
         # llama.cpp ignores the key; Hermes rejects "placeholder" but documents this one.
         placeholder_key="no-key-required",
-        allowed_hosts=("host.docker.internal",),
+        allowed_hosts=("host.containers.internal",),
     ),
 }
 
